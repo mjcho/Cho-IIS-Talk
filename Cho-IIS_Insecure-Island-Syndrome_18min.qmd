@@ -26,7 +26,7 @@ execute:
   echo: false
   warning: false
   error: false
-occassion: "TODO-VENUE"
+occassion: "Taiwan Data Futures 2026"
 date: last-modified
 editor:
   render-on-save: true
@@ -243,7 +243,7 @@ if (length(bg_files) > 0) {
 ::: {.column width="48%"}
 #### Why Taiwan is a hard case
 
-- cross-strait informational pressure
+- informational threat narratives
 - documented outlet-level ownership and self-censorship pressures
 - low baseline trust in TV news
 :::
