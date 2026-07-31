@@ -63,12 +63,39 @@ theme_sw <- function(base_size = 13) {
   )
 }
 
-# --- Resolve the canonical export (glob on version prefix; never hard-code a version) ----
+# --- Resolve the export by pinning to the manuscript's own declaration -------------------
+# NOT by globbing on the version prefix. Version ordering by string sort is unsound: under
+# C collation "_" (0x5F) sorts above "." (0x2E), so a descending sort of
+# Analysis_v*_export.RData puts the superseded Analysis_v5_export.RData *ahead* of
+# Analysis_v5.3_export.RData, while macOS ICU collation orders them the other way. Which
+# export loaded was therefore locale-dependent — a defect regardless of which way it fell.
+# The deck now reads the path the manuscript itself declares, so it cannot silently drift
+# onto a different export than the paper it is presenting. Hard-fails rather than falling
+# back to a glob: a deck built on the wrong export is worse than a deck that will not build.
+ms_qmd <- "../../Cho-IIS/Manuscript/Manuscript_v5.3_2026-07-31.qmd"
 export_path <- Sys.getenv("IIS_EXPORT", unset = NA_character_)
 if (is.na(export_path)) {
-  cands <- sort(Sys.glob("../../Cho-IIS/Analysis/Analysis_v*_export.RData"), decreasing = TRUE)
-  stopifnot(length(cands) >= 1)
-  export_path <- cands[1]
+  if (!file.exists(ms_qmd)) {
+    stop("Cannot pin the export: manuscript not found at ", ms_qmd,
+         ". Set IIS_EXPORT to override.")
+  }
+  .ms_src  <- readLines(ms_qmd, warn = FALSE)
+  .pat     <- 'load\\(\\s*"[^"]*Analysis_v[^"]*_export\\.RData"'
+  .hits    <- regmatches(.ms_src, regexpr(.pat, .ms_src))
+  if (length(.hits) == 0L) {
+    stop("Cannot parse a load(...) export path out of ", ms_qmd,
+         "'s Setup chunk. The deck pins its export to the manuscript's declaration and ",
+         "will not guess. Fix the manuscript or set IIS_EXPORT.")
+  }
+  if (length(unique(.hits)) > 1L) {
+    stop("The manuscript declares more than one export path (",
+         paste(unique(.hits), collapse = " | "),
+         "). Resolve the ambiguity in the manuscript or set IIS_EXPORT.")
+  }
+  # The manuscript's path is relative to Manuscript/; rebase it onto this deck's directory.
+  .ms_rel     <- sub('"$', "", sub('^load\\(\\s*"', "", .hits[1]))
+  export_path <- normalizePath(file.path(dirname(ms_qmd), .ms_rel), mustWork = FALSE)
+  rm(.ms_src, .pat, .hits, .ms_rel)
 }
 stopifnot(file.exists(export_path))
 load(export_path)
@@ -148,6 +175,29 @@ r_of <- function(a, b) {
 }
 inv_row <- function(cmp) invariance_differences %>% filter(.data$comparison == cmp) %>% slice(1)
 j4cov <- j4_construction_validation$channel_coverage
+
+# Facet -> display label, keyed BY NAME. The slide table selects and renames through this
+# vector, so a change in factor order can never silently re-label a column (it previously
+# could: `kable(col.names = ...)` assigns positionally, and three of six columns were wrong).
+facet_labels <- c(
+  Aggression_online = "Online Aggr.",
+  Disinfo_ops       = "Disinfo Ops",
+  J4_distrust       = "Media Distrust",
+  TV_threat         = "TV Threat",
+  xMedia_FakeNews   = "xMedia Fake"
+)
+
+# Cluster 3's threat-side coefficients against the reference repertoire.
+# NB: cluster 3 is *elevated on all four* threat facets, but it is NOT the highest on all
+# four — cluster 6 is higher on TV_threat and xMedia_FakeNews. See VERIFY-LEDGER.md,
+# NEEDS MJ #1: Manuscript v5.3 p.13 still carries the stronger "highest on all four"
+# wording, which its own Table 2 contradicts. This deck states the defensible version.
+cl3_threat_p_max <- max(
+  h1_cluster_coefficients$p.value[
+    h1_cluster_coefficients$term == "cluster3" &
+      h1_cluster_coefficients$outcome != "J4_distrust"
+  ]
+)
 ```
 
 ```{r}
@@ -232,33 +282,19 @@ if (length(bg_files) > 0) {
 
 ## A Fragmented Media System — and a Hard Case
 
-:::: {.columns}
-::: {.column width="52%"}
-#### Fragmented, hybrid media systems
+Fragmented, hybrid media systems mean **parallel informational ecosystems, not one shared environment** — ideological division, algorithmic filtering, contested credibility of outlets and gatekeepers.
 
-- parallel informational ecosystems, not one shared environment
-- ideological division, algorithmic filtering
-- contested credibility of outlets and gatekeepers
-:::
-::: {.column width="48%"}
-#### Why Taiwan is a hard case
-
-- informational threat narratives
-- documented outlet-level ownership and self-censorship pressures
-- low baseline trust in TV news
-:::
-::::
+**Taiwan is a hard case:** informational threat narratives, documented outlet-level ownership and self-censorship pressures, and low baseline trust in TV news.
 
 [Audiences navigate parallel informational ecosystems, not one shared environment.]{.neon-cyan}
 
-[Bennett & Livingston (2018); Chadwick (2017); Skrzypczak (2019); Chang et al. (2023).]{.citation}
+[Bennett & Livingston (2018); Chadwick (2017); Skrzypczak (2019); Chang & Tang (2023).]{.citation}
 
 ::: notes
-1. [⏱ 0:50]
-2. 破碎化、混合式的媒體系統，改變了人們理解風險與歸屬的方式。
-3. 閱聽人現在面對的是平行的資訊生態系，而不是單一共享環境。
-4. 台灣是一個特別困難的案例：兩岸資訊壓力、媒體所有權與自我審查的紀錄，以及電視新聞信任基準偏低。
-5. 這是整場演講的經驗場景設定。
+1. [⏱ 0:35]
+2. 破碎化、混合式的媒體系統，改變了人們理解風險與歸屬的方式。閱聽人面對的是平行的資訊生態系，不是單一共享環境。
+3. 台灣是一個特別困難的案例：兩岸資訊壓力、媒體所有權與自我審查的紀錄，以及電視新聞信任基準偏低（Chang & Tang 2023 記錄到只有大約 46–47% 的人信任電視新聞）。
+4. 這是整場演講的經驗場景設定——講快一點，重點在下一張的概念轉折。
 :::
 
 ---
@@ -316,11 +352,58 @@ H2b and H2c are alternatives *within* a cell but **not mutually exclusive across
 [The framework states competing predictions ex ante and adjudicates each per facet.]{.neon-cyan}
 
 ::: notes
-1. [⏱ 1:20]
+1. [⏱ 0:55]
 2. RQ1 問repertoires 是否讓兩個 facet 出現不同的分化型態。
 3. RQ2 把 H2a/H2b/H2c 設定成三分結構：不調節、放大、或減弱。
 4. RQ3 把 erosion 與 compensation 設為對立假設，並加入 H3c 這個關於「強度」而非「方向」的主張。
 5. 重點是：H2b 與 H2c 在同一個 cell 內互斥，但跨 repertoire 並不互斥——兩者同時出現是結果，不是矛盾。
+6. 下一張把這些對立說成人話——不要在這裡就講完。
+:::
+
+---
+
+## What's Actually at Stake {.smaller-content}
+
+:::: {.columns}
+::: {.column width="56%"}
+#### Amplification (H2b) vs attenuation (H2c)
+
+Does an existing vulnerability make the same media diet **hit harder**, or **stop mattering**?
+
+- *Amplify* — the same film is scarier if you are already jumpy.
+- *Attenuate* — the twenty-year loyal viewer: feeling worse changes nothing, because for them distress and diet have come apart.
+
+#### Erosion (H3a) vs compensation (H3b)
+
+Same starting point, opposite bets on what people do next.
+
+- *Erode* — you stop extending the benefit of the doubt past people you already know.
+- *Compensate* — media hostility sends you **looking** for people to check things against.
+:::
+::: {.column width="44%"}
+::: {.theory-box}
+**Bonding** ties are the people who would help you move house at 2 a.m. — family, close friends.
+
+**Bridging** ties are the people who would tell you about a job in a field you don't work in — acquaintances, neighbours, colleagues from another floor.
+
+Bridging is where cross-cutting information and perspective come from; bonding is where support comes from.
+:::
+
+Both sides of each pair are documented in the literature. That is why they are stated as rivals and **adjudicated**, not assumed.
+:::
+::::
+
+[A society that keeps only bonding is one where everyone has support and nobody has common ground.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:15]
+2. 這張是為了讓 hypotheses 變成「活的」——不是為了補充定義。
+3. **Amplification（H2b）**：兩個人看同一則晚間新聞，本來就焦慮、睡不好的那一個，看完更確信媒體在誤導他。同樣的 diet，效果更強——就像你本來就緊張的時候，同一部片會更可怕。
+4. **Attenuation（H2c）**：二十年只看同一台的忠實觀眾。他心情變差，並不會讓那則播報打得更重，因為對他來說 distress 和 media diet 早就脫鉤了。Cultivation theory 自己就預測過這種情況：當一個結果已經飽和，斜率本來就會變平。
+5. **Erosion（H3a）**：如果你認為整個新聞系統在騙你，你就不會再把「善意推定」延伸到你認識的人以外。隔壁貼著另一個政黨貼紙的鄰居，變成一個你什麼都不跟他討論的人。
+6. **Compensation（H3b）**：相反的賭注——媒體的敵意反而把你推出去找人查證。你在飯桌上爭論、你加入 LINE 群組、你出現在社區會議。
+7. **Bridging / bonding 一定要在這裡講清楚**，因為 RQ3 完全建立在這個區分上，而聽眾多半不熟這兩個詞。Bonding 是凌晨兩點會來幫你搬家的人；bridging 是會告訴你另一個行業有職缺的人。
+8. 收尾這一句要慢——「一個只剩 bonding 的社會，是每個人都有人支持、卻沒有人有共同基礎的社會。」這就是 RQ3 為什麼重要。
 :::
 
 # Finding and Naming Media Repertoires
@@ -387,25 +470,55 @@ fig_cluster_metrics_obj + theme_sw()
 
 ---
 
-## Naming Them: LLM Structured Labeling
+## Naming Them: LLM Structured Labeling {.tight}
 
-Twenty (or fewer) outlets a cluster **over-uses**, ranked by **added value** — the gap between within-cluster and population prevalence → `gpt-5.6-sol` labeling agent, structured JSON (label, summary, keywords, rationale, confidence) → **30 independent replicates**, adjudication pending.
+**What the ranking measure is.** Added value is a **difference**, not a ratio: $AV = m_c - m_t$ — an outlet's prevalence *within* the cluster minus its prevalence in the reference population (all clustered respondents, noise cluster excluded). No prevalence floor, no significance filter. Panels hold the top twenty at positive AV, so **panel length varies with how many outlets a cluster genuinely over-uses — a thin panel is a result, not a failure.**
+
+:::: {.columns}
+::: {.column width="52%"}
+#### Why a difference, not lift
+
+Lift **saturates**: an outlet used *only* by cluster members hits the maximum $1/P(\text{cluster})$ whether three people use it or five hundred. A difference cannot — $AV$ is bounded above by $m_c$, so a handful of users cannot climb the table however exclusive they look. **That bound is why no prevalence floor is needed:** the rare tail is handled structurally, not by a threshold someone picked.
+
+#### The cost, stated honestly
+
+A difference over-weights the **common** tail exactly as lift over-weights the rare one. So a cluster that simply uses more outlets posts big gaps for that reason alone. The fix is not in the sort key — **each cluster's header carries its repertoire size**, and the labeler was told to read gaps against it.
+:::
+::: {.column width="48%"}
+#### What the model actually receives — four things
+
+1. a **header line** — cluster size, mean online outlets vs the population mean;
+2. a **positive panel** — over-used outlets, with summary statistics and item type;
+3. a short **negative panel** — most under-used outlets, for avoidance-based reasoning only;
+4. **media-format metadata**.
+
+Columns are $n_c$, $m_c$, $m_t$ — and **lift as a labelled context column only**, carrying a standing note that it is unreliable at low $n$ and must never drive the sort.
+
+`gpt-5.6-sol`, structured JSON → **30 independent replicates**, agreement measured; adjudication pending.
+:::
+::::
 
 ::: {.theory-box}
-Inter-coder reliability is the standard for *supervised* coding and a category mismatch for *unsupervised* discovery — the burden shifts to post-hoc validation: **semantic**, **replicate agreement**, **predictive**.
+Inter-coder reliability is the standard for *supervised* coding and a category mismatch for *unsupervised* discovery — the burden shifts to post-hoc validation: **semantic**, **replicate agreement**, **predictive**. · One wrinkle disclosed to the model: of the 120 binary indicators, `vb7` is a one-hot expansion of a **single-choice** item, so its levels are mutually exclusive — a `vb7` row reports **modal choice, not breadth**.
 :::
 
 [The labeling schema carries no ideological-orientation field, and no claim here rests on a model-assigned political leaning.]{.neon-cyan}
 
-[DiMaggio et al. (2013); Grimmer & Stewart (2013); Pham et al. (2024).]{.citation}
+[Hahsler (2015); Brin et al. (1997); Tan et al. (2004); Song et al. (2016); Lavrač et al. (1999); Monroe et al. (2008); DiMaggio et al. (2013); Grimmer & Stewart (2013); Pham et al. (2024).]{.citation}
 
 ::: notes
-1. [⏱ 1:00]
-2. 每個 cluster 用「added value」排序它實際過度使用的媒體來源，而不是舊版的 distinctiveness score。
-3. 標籤模型是 gpt-5.6-sol，輸出結構化 JSON，並且執行了 30 次獨立重複標籤。
-4. 這一版的 schema 完全沒有 ideological orientation 欄位——這是本次 relabeling 的一個結構性改變，任何主張都不依賴模型指定的政治傾向。
-5. 標籤的可信度不靠模型自報的 confidence，而靠三項檢驗：語意效度、複本一致性、預測效度。
-6. **這些標籤目前是暫定的（provisional）**，30 次複本的裁決仍在進行中。
+1. [⏱ 1:40]
+2. 這張投影片是本研究在**測量**上的貢獻，不只是「我們用了 LLM」。重點在於：標籤模型只看得到分析者放在它面前的特徵，所以**挑選特徵的統計量決定了標籤能講什麼**。
+3. **Added value 是差值不是比值**：$AV = m_c - m_t$。參照母體是所有分群的受訪者、排除 noise cluster（N = 6,102；noise cluster 只有 4 人）。沒有 prevalence floor，沒有顯著性篩選。
+4. **為什麼是差值——關鍵是有界性。** 只有某個 cluster 的人用的媒體，lift 會直接衝到最大值 $1/P(\text{cluster})$，不管用的人是三個還是五百個。差值不會這樣飽和：AV 的上界就是 $m_c$，所以一個 532 人 cluster 裡只有三個人用的媒體，AV 不可能超過 **0.0056**，再怎麼「專屬」也爬不上表。**這個上界本身就取代了 prevalence floor** ——不是靠某人挑的門檻。
+5. 文獻脈絡（appendix S2.1）：比值型的 distinctiveness 在低頻時不穩定（Hahsler；Brin；Tan et al.），而 subgroup discovery 要求 deviation factor 搭配 size factor（Song；Lavrač）。在單一 cluster 之內，用 AV 排序等同於用 weighted relative accuracy 排序，也就等同於 novelty。
+6. **代價要誠實講**：差值會過度偏重**常見**的尾巴，就像 lift 過度偏重稀有的尾巴（Monroe et al.）。這裡確實成立——120 個特徵裡最高的母體使用率是 40.6%。所以只是「用得比較多」的 cluster，光靠這一點就會在熱門媒體上拉出大 gap。
+7. 解法不在排序鍵，而在**呈現**：每個 cluster 的 header 都帶著它的 repertoire size（成員平均使用的線上媒體數，對比母體平均 4.46），而且明確告訴標籤模型：**在高母體使用率上的小 gap 不是 distinctiveness，不管它排多高。**
+8. 模型收到的是**四樣東西**，不是一張表：header line、positive panel、簡短的 negative panel（有兩個 cluster 部分是由它們「不用什麼」定義的）、以及 media-format metadata。lift 有出現，但只作為標示清楚的脈絡欄位，附帶「低 n 時不可靠、絕不可用來排序」的常設註記。
+9. **vb7 的細節**（如果有人問）：120 個二元指標分成六個 block，其中 vb7 有 50 個 level，但它**不是**多選的品牌題組——它是單選題「您最常看哪一台電視新聞？」的 one-hot 展開，加上一個「不看電視新聞」的 level。各 level 互斥，95.1% 的受訪者剛好落在一個。所以 vb7 那一列講的是**最常選擇**，不是**廣度**；當好幾個互斥頻道都出現中等數值時，**那個分散的型態本身就是發現**，而不是任何單一頻道的弱證據。
+10. **複本一致性（appendix S2.1，Table 8）**：兩個數字必須一起讀。15 個 cluster 裡有 14 個達到 **100% 語意群組一致**，但**逐字一致只有 3.3% 到 30.0%**。Cluster 11 是極端案例：30 次跑出 30 個不同的字串，卻全部被歸為同一個語意群組。只報語意那個數字，等於讓「100% 一致」這個宣稱完全靠一個沒說出口的門檻撐著。誠實的講法也是比較強的講法：**用字的變異很大，底下的理解很穩定——除了 cluster 11，那裡用字的變異是全面的。**
+11. 標籤的可信度不靠模型自報的 confidence（那只是描述性的），而靠三項檢驗：語意效度、複本一致性、預測效度。
+12. **這些標籤目前是暫定的（provisional）**，30 次複本的裁決仍在進行中。
 :::
 
 ---
@@ -453,7 +566,7 @@ fig_cluster_media_obj + theme_sw()
 
 ---
 
-## How a Claim Gets Made Here
+## How a Claim Gets Made Here {.smaller-content}
 
 **Estimators.** Weighted `lm` primary; stratified `svyglm` design-based robustness check.
 
@@ -461,16 +574,39 @@ fig_cluster_media_obj + theme_sw()
 **Neither is unambiguously conservative** — `lm(weights=)` treats weights as precision weights (anti-conservative SEs); the pooled design is strata-only because the PSU identifier is absent from the 2022 release (design-based SEs are themselves a lower bound).
 :::
 
-**The interpretability criterion.** (i) **Omnibus gate** — 14-df *F* on the full interaction block before any term inside it is read. (ii) **Reference-free corroboration** — the repertoire's own simple slope at ±1 SD via `emmeans`. A term is interpretable only if **both** hold.
+**The interpretability criterion — a term is read only if *both* gates open.**
+
+:::: {.columns}
+::: {.column width="50%"}
+**(i) Omnibus gate** — 14-df *F* on the full interaction block, before any term inside it is read.
+
+*Plainly:* before asking whether any **one** repertoire behaves differently, ask whether the fifteen differ from each other **at all, as a set**. If the set shows nothing, one repertoire looking different is very likely the product of having looked fifteen times.
+
+> Flip fifteen coins. One coming up heads eight times in ten hasn't found you a biased coin — it has found you fifteen coins.
+:::
+::: {.column width="50%"}
+**(ii) Reference-free corroboration** — the repertoire's own simple slope at ±1 SD via `emmeans`.
+
+*Plainly:* an interaction coefficient answers a **comparison** question — does distress matter *more* here than in cluster 0? It never says distress matters here *at all*. So we ask, for that group alone: at high distress versus low, does perceived threat actually differ?
+
+> "Taipei is warmer than Yilan today" does not tell you whether Taipei is warm.
+:::
+::::
+
+**The nulls are informative, not indeterminate:** the design detects $f^2 \ge$ `r sprintf("%.4f", max(rq2_power_table$min_detectable_f2))` at 80% power, so **a closed gate rules out moderation of ordinary size.**
 
 [The gate protects interpretation; it is not a familywise correction, so repertoire-level patterns are labelled descriptively.]{.neon-cyan}
 
 ::: notes
-1. [⏱ 1:00]
-2. 這張投影片決定了後面所有結果怎麼被讀。
+1. [⏱ 1:30]
+2. 這張投影片決定了後面所有結果怎麼被讀——講慢一點，這裡投資的時間，後面三個 RQ 都會回收。
 3. 兩種估計法都不是天然保守的，所以兩者並列報告，而不是挑一個當作嚴格標準。
-4. Interpretability criterion 有兩個條件：omnibus gate 先開，然後 reference-free 的 simple slope 要被證實。
-5. 兩者都滿足，才算 interpretable as moderation——這不是 familywise correction，所以每個 repertoire 的型態仍用描述性語氣呈現。
+4. **Omnibus gate 的白話版**：先問「這十五個 repertoire 作為一個集合，彼此之間到底有沒有差異」，再問「哪一個不一樣」。如果整個集合看不出東西，那單獨一個看起來不一樣的，多半是因為你看了十五次。
+   - 硬幣的比喻要講出來：丟十五枚硬幣，其中一枚十次裡有八次正面——你沒有找到一枚有偏的硬幣，你只是找到了十五枚硬幣。
+5. **Reference-free corroboration 的白話版**：交互作用係數回答的是**比較**問題——distress 在這一群裡是不是比參照組（cluster 0）更重要？它**沒有**說 distress 在這一群裡重不重要。一個群體可以跟參照組有差異，自己的斜率卻是平的——只要參照組的斜率往反方向跑就會這樣。所以我們回頭單獨問這一群：高 distress 對比低 distress，perceived threat 真的有差嗎？這就是 simple slope，而且它不依賴我們剛好把誰設為參照組。
+   - 天氣的比喻：「今天台北比宜蘭暖」並沒有告訴你台北暖不暖。
+6. 兩者都滿足，才算 interpretable as moderation——這不是 familywise correction，所以每個 repertoire 的型態仍用描述性語氣呈現。
+7. **最後一句很重要**：這個設計在 80% power 下可以偵測到 f² `r sprintf("%.4f", max(rq2_power_table$min_detectable_f2))` 以上的效果，遠低於慣例的小效果標準。所以 gate 關閉不是「我們什麼都沒找到」，而是「一般大小的調節效果被排除了」。沒有這一句，整個 RQ2 段落聽起來會像是一無所獲。
 :::
 
 # What the Repertoires Do
@@ -503,18 +639,22 @@ h1_facet_map %>%
   select(facet, repertoire, cell) %>%
   pivot_wider(names_from = facet, values_from = cell) %>%
   arrange(as.integer(str_extract(repertoire, "^[0-9]+"))) %>%
-  rename(Repertoire = repertoire) %>%
-  knitr::kable(col.names = c("Repertoire", "Online Aggr.", "Disinfo Ops", "TV Threat", "xMedia Fake", "Media Distrust"))
+  # Name-keyed, like the manuscript's gt()/cols_label(): all_of() errors loudly if a facet
+  # is missing, and the labels travel with their column rather than with a position.
+  select(Repertoire = repertoire, all_of(names(facet_labels))) %>%
+  rename_with(~ facet_labels[.x], .cols = all_of(names(facet_labels))) %>%
+  knitr::kable()
 ```
 
-Cluster 3 (`r clab(3)`) is **highest**-threat on all four threat facets and simultaneously rank `r fm_row("J4_distrust", 3)$rank` of 15 in distrust.
+Cluster 3 (`r clab(3)`) is **elevated on all four threat facets** against the reference (largest *p* `r fmt_p(cl3_threat_p_max)`), top-ranked on both online facets — and sits at rank `r fm_row("J4_distrust", 3)$rank` of 15 in distrust.
 
 [Two facets a one-dimensional media-cynicism account would place together sit at opposite ends — the empirical content of M1.]{.neon-cyan}
 
 ::: notes
 1. [⏱ 1:00]
 2. 這是 RQ1 的核心投影片。
-3. Cluster 3（`r clab(3)`）在四個威脅 facet 上都排名最高，但在 media distrust 上卻排在第 `r fm_row("J4_distrust", 3)$rank` 名（共 15 名）。
+3. Cluster 3（`r clab(3)`）在四個威脅 facet 上都顯著高於參照組（最大的 *p* `r fmt_p(cl3_threat_p_max)`），兩個 online facet 更是排名第一；但在 media distrust 上卻排在第 `r fm_row("J4_distrust", 3)$rank` 名（共 15 名）。
+   - 注意用字：是「四個 facet 都偏高」，**不是**「四個 facet 都最高」——TV threat 與 xMedia fake 的最高者是 cluster 6（`r clab(6)`）。論文 v5.3 第 13 頁目前寫的是較強的說法，與它自己的 Table 2 不一致（見 VERIFY-LEDGER.md）。
 4. 這個反轉正是 M1 的經驗內容：如果兩個 facet 是同一個潛在構念，不應該出現這種分離。
 5. 兩個關於這個排序的解讀都是 post-hoc：partisan 解讀與 engagement-detachment 解讀。partisan 解讀不成立——cluster 0（`r clab(0)`），這個 facet 上最大、且建立在明確親藍頻道之上的 repertoire，distrust 排名居中偏低（第 `r fm_row("J4_distrust", 0)$rank` 名），不在應有的高 distrust 端；Blue/Green 二分並不能組織這個排序，我們選擇報告這個「失敗」而不是略過。Engagement-detachment 解讀描述上表現較好，但也是 post-hoc。
 :::
@@ -555,7 +695,7 @@ rq2_coefficient_slope_comparison %>%
   knitr::kable()
 ```
 
-SET TV attenuation is corroborated under the primary weighted estimator only (design-based simple-slope *p* = `r fmt_pv(rq2_term("Disinfo_ops", "Distress", 2)$slope_svy_p)` and `r fmt_pv(rq2_term("Aggression_online", "Distress", 2)$slope_svy_p)`).
+The two SET TV rows are **primary-estimator-only** — see the `Design-robust` column.
 
 ::: {.theory-box}
 Attenuation is conditional cultivation's own boundary-condition case — cultivation was specified to flatten under ceiling effects and to moderate selectively within studies.
@@ -566,27 +706,37 @@ Attenuation is conditional cultivation's own boundary-condition case — cultiva
 [Hetsroni (2014); Russell & Buhrau (2015).]{.citation}
 
 ::: notes
-1. [⏱ 0:50]
+1. [⏱ 0:40]
 2. 兩個放大：`r clab(10)` 的安全價值 × online aggression，以及 `r clab(14)` 的 distress × TV threat，兩者都 design-robust。
-3. 一個減弱：`r clab(2)` 的 distress 同時減弱 disinformation 與 online aggression 的關聯，但只在加權估計下通過 corroboration。
+3. 一個減弱：`r clab(2)` 的 distress 同時減弱 disinformation 與 online aggression 的關聯，但**只在加權估計下**通過 corroboration——design-based 的 simple-slope *p* 分別是 `r fmt_pv(rq2_term("Disinfo_ops", "Distress", 2)$slope_svy_p)` 與 `r fmt_pv(rq2_term("Aggression_online", "Distress", 2)$slope_svy_p)`。這個但書在論文裡每次用到 attenuation 結果時都會重述，被問到就直接講這兩個數字。
 4. 這不是反常，而是 conditional cultivation 理論自己允許的邊界條件——當某個結果變項接近天花板效應時，涵化效果本來就該減弱。
 :::
 
 ---
 
-## RQ2: The Moderator's Own Effect Is Itself a Result
+## RQ2: The Moderator's Own Effect Is Itself a Result {.smaller-content}
 
-Security values raise perceived threat on three of four threat facets (cluster-averaged overall slopes); distress does not. For Disinfo_ops × Distress, the *bare reference-repertoire* coefficient ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_main_b)`, $p$ `r fmt_p(rq2_row("Disinfo_ops", "Distress")$W_main_p)`) is clearly significant, while the cluster-averaged slope straddles zero ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_overall_slope)`).
+**In a model with fifteen repertoires and their interactions, the coefficient labelled "distress" is not the effect of distress.** It is the effect of distress **inside cluster 0** — the reference group is the only one for which every interaction term is switched off. `W_overall_slope` averages all fifteen groups' own slopes: the quantity people *think* they are reading.
 
-Distress raises the *level* of media distrust (`r fmt_est(rq2_row("J4_distrust", "Distress")$W_overall_slope)`) while the J4 × Distress interaction block is null — the indirect effects below are treated as unmoderated.
+::: {.theory-box}
+Reporting the bare coefficient as a general effect is reporting a national average from one city.
+:::
 
-[Report `W_overall_slope`, never the bare `W`.]{.neon-cyan}
+**The demonstration.** For Disinfo_ops × Distress the *bare reference-repertoire* coefficient ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_main_b)`, $p$ `r fmt_p(rq2_row("Disinfo_ops", "Distress")$W_main_p)`) is clearly significant, while the cluster-averaged slope straddles zero ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_overall_slope)`, CI `r fmt_ci(rq2_row("Disinfo_ops", "Distress")$W_overall_slope_lo, rq2_row("Disinfo_ops", "Distress")$W_overall_slope_hi)`). Same model, same data, **two sentences that contradict each other — and only one of them is about Taiwanese adults.**
+
+Read as overall slopes, security values raise perceived threat on three of four threat facets; distress does not, only TV threat reaching a comparable slope. Distress does raise the *level* of media distrust (`r fmt_est(rq2_row("J4_distrust", "Distress")$W_overall_slope)`) while the J4 × Distress interaction block is null — so the indirect effects below are treated as unmoderated.
+
+[A moderator can shift the level of a facet without conditioning the repertoire pathway at all.]{.neon-cyan}
 
 ::: notes
-1. [⏱ 0:50]
-2. 交互作用模型中，那個「裸的」moderator 係數其實只是參照組的斜率，不是 moderator 的一般效果。
-3. Disinfo_ops × Distress 就是最清楚的例子：裸係數顯著，但跨群平均後的斜率卻幾乎是零——兩個數字會導出完全相反的句子。
-4. Distress 會提高 media distrust 的整體水準，但不會改變 repertoire → distrust 這條路徑本身，所以後面的 indirect effect 都當作未被調節來處理。
+1. [⏱ 1:05]
+2. **先講清楚那個係數是什麼**：在一個有十五個 repertoire 和它們交互作用項的模型裡，標著「distress」的那個係數**不是 distress 的效果**。它是 distress **在 cluster 0 裡面**的效果——參照組是唯一一個所有交互作用項都被關掉的組別。如果 cluster 0 本身就不典型，那個數字就只在描述 cluster 0。
+3. `W_overall_slope` 是十五個組別各自斜率的平均，也就是大家**以為**自己在讀的那個量。
+4. 比喻：把裸係數當成一般效果來報告，等於拿一個城市的數字當全國平均。
+5. **示範**：Disinfo_ops × Distress 的裸係數 `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_main_b)`（$p$ `r fmt_p(rq2_row("Disinfo_ops", "Distress")$W_main_p)`）明顯顯著，但跨群平均斜率是 `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_overall_slope)`，信賴區間跨過零。同一個模型、同一批資料，兩個互相矛盾的句子——而只有其中一句在講台灣成年人。
+6. 注意用字：security values 在四個 threat facet 中的三個上提高了 perceived threat；**distress 則沒有——只有 TV threat 達到相當的斜率**。這個但書要講，論文裡有。
+7. Distress 會提高 media distrust 的整體**水準**，但 J4 × Distress 的 block 是 null，所以它沒有改變 repertoire → distrust 這條路徑本身；後面的 indirect effect 都當作未被調節來處理。
+8. **報告規則（給提問者，不是給投影片）**：一律報 `W_overall_slope`，不要報裸的 `W`。這是論文 Methods 明訂的。
 :::
 
 ---
@@ -625,10 +775,12 @@ h3ab_bpath_table %>%
 
 ## RQ3 / H3c: Bridging Erodes Harder
 
+$\Delta b$ is the difference between two slopes, **both of which are negative** — so this is a question about which falls faster, never about which rises.
+
 $\Delta b$ = `r fmt_est(h3c_row("J4_distrust")$delta_b)`, 95% CI `r fmt_ci(h3c_row("J4_distrust")$delta_lo, h3c_row("J4_distrust")$delta_hi)`, excluding zero: bridging ties erode about **`r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`×** more strongly than bonding. Supported for distrust and no threat facet — all four threat $\Delta b$ CIs contain zero.
 
 ::: {.theory-box}
-**Because both associations are negative, this is a magnitude claim.** Bridging falling faster shifts the relative balance toward bonding while both decline — a compositional shift inside a shrinking total, not growth in bonding capital.
+**Two buckets, both leaking.** Bridging leaks about `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`× faster than bonding. At the end, proportionally more of what is left is bonding — **but there is less water. Nobody gained anything.**
 :::
 
 The nearest prior ordering (Beaudoin 2011: bonding β = .26 > bridging β = .17) runs the other way — a contribution, not a replication.
@@ -636,10 +788,12 @@ The nearest prior ordering (Beaudoin 2011: bonding β = .26 > bridging β = .17)
 [Nothing here supports a claim that people "turn to" bonding ties when they distrust the media.]{.neon-cyan}
 
 ::: notes
-1. [⏱ 0:50]
-2. Delta b 排除零，bridging 大約以 `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)` 倍的強度比 bonding 侵蝕得更快。
-3. 這是 magnitude claim，不是 direction claim；兩條 b-path 都是負的，不能說人們「轉向」bonding ties——這只是在一個持續縮小的總量裡，相對比例往 bonding 偏移。
-4. 這個方向跟最接近的前人研究（Beaudoin 2011）相反，所以是一個 contribution，不是複製。
+1. [⏱ 1:00]
+2. **先說 Δb 是什麼**：它是兩條斜率的差，而**兩條都是負的**。所以這個問題從頭到尾是「哪一個掉得比較快」，不是「哪一個上升」。這是全篇最容易被誤報的一件事。
+3. Delta b = `r fmt_est(h3c_row("J4_distrust")$delta_b)`，95% CI `r fmt_ci(h3c_row("J4_distrust")$delta_lo, h3c_row("J4_distrust")$delta_hi)`，排除零；bridging 大約以 `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)` 倍的強度比 bonding 侵蝕得更快。四個 threat facet 的 Δb 信賴區間全都含零。
+4. **水桶的比喻要講出來，這是聽眾唯一會記得的東西**：兩個水桶都在漏。Bridging 漏的速度大約是 bonding 的 `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)` 倍。到最後，剩下的水裡 bonding 的比例確實變高了——**但水變少了。沒有人得到任何東西。**
+5. 這樣講，就不可能被聽成「人們轉向 bonding ties」。這是 compositional shift，不是 mobilization。
+6. 這個方向跟最接近的前人研究（Beaudoin 2011：bonding β = .26 > bridging β = .17）相反，所以是一個 contribution，不是複製。構念不完全相同，所以不是直接矛盾。
 :::
 
 ---
@@ -648,15 +802,25 @@ The nearest prior ordering (Beaudoin 2011: bonding β = .26 > bridging β = .17)
 
 Two threat facets positively associated with connectedness under the primary estimator: TV threat → BSC and online aggression → BSC/BoSC. Only **TV threat → BSC** survives design-based inference (*p* `r fmt_p(bpath("TV_threat", "BSC")$p_design)`); both online-aggression paths go marginal.
 
+::: {.theory-box}
+**"Survives design-based inference" — plainly.** We estimated everything **two ways**, and *neither is the strict one*: the primary estimator probably draws its error bars too tight because it treats survey weights as precision weights; the design-based one probably does too, because the pooled design is missing its cluster identifier. When both agree we say so; when only one agrees we say that too, and we do not lean on it. **Compensation is the case where only one agrees.**
+:::
+
 External picture is mixed: Leong et al. (2023) positive but different domain; Neyazi et al. (2021) null; Goodwin et al. (2005) runs to bonding.
 
 [Supported weakly and locally — a direction for future work, not a finding delivered.]{.neon-cyan}
 
 ::: notes
-1. [⏱ 0:50]
-2. 兩個威脅 facet 在主要估計法下與 connectedness 正相關，但只有 TV threat → BSC 在 design-based 檢驗下依然穩健。
-3. 兩條 online aggression 的路徑都變成 marginal——這是全篇最脆弱的一個主張。
-4. 外部文獻的證據也是混合的，不是一致支持的方向。
+1. [⏱ 1:00]
+2. 兩個威脅 facet 在主要估計法下與 connectedness 正相關：TV threat → BSC，以及 online aggression → BSC/BoSC。
+3. 但只有 **TV threat → BSC** 在 design-based 檢驗下依然穩健（*p* `r fmt_p(bpath("TV_threat", "BSC")$p_design)`）；兩條 online aggression 的路徑都變成 marginal。
+4. **「survives design-based inference」要翻成白話**，因為聽眾不會知道這句在做什麼工，而它其實承擔了全部的重量：
+   - 我們把每件事都用**兩種方法**估計。
+   - **兩種都不是那個「嚴格的」方法**。主要估計法可能把誤差棒畫得太窄，因為它把抽樣權重當成精確度權重；design-based 那個大概也太窄，因為合併後的設計缺了 PSU 識別碼。
+   - 兩個都同意，我們就說兩個都同意；只有一個同意，我們也照實說，而且不倚賴它。
+   - **Compensation 就是只有一個同意的那個案例。**
+5. 外部文獻的證據也是混合的，不是一致支持的方向——所以這是「往哪裡走」的指示，不是一個已經交付的發現。
+6. 這是全篇最脆弱的一個主張，講的時候不要幫它加碼。
 :::
 
 # What It Buys Us
@@ -668,7 +832,7 @@ External picture is mixed: Leong et al. (2023) positive but different domain; Ne
 Distrust erodes both tie types and erodes bridging ~`r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`× harder; perceived threat erodes neither, and is *positively* associated with bridging for TV threat.
 
 ::: {.theory-box}
-Provenance: **H1a, H2b, H3a, H3b** were carried forward; **H1b, H2a, H2c, H3c** are exploration-derived, and the two readings of the distrust ranking are post-hoc.
+The mechanism is **not singular**. Which facet a reader has in mind decides whether informational insecurity looks like erosion or like mobilization — and a one-construct framework cannot even pose that question, because it has nowhere to put the difference.
 :::
 
 [A framework treating informational insecurity as a single construct cannot state that result, let alone explain it.]{.neon-cyan}
@@ -677,53 +841,79 @@ Provenance: **H1a, H2b, H3a, H3b** were carried forward; **H1b, H2a, H2c, H3c** 
 1. [⏱ 0:50]
 2. 把三個 RQ 放在一起看：RQ1 說 repertoire 讓兩個 facet 分化，且排序不同；RQ2 說這個分化大部分是不被調節的；RQ3 說兩個 facet 下游走向相反。
 3. 讀者心裡想的是哪個 facet，決定了 informational insecurity 看起來像 erosion 還是像 mobilization。
-4. 這張投影片也是揭露 provenance 的地方：H1b、H2a、H2c、H3c 都是 exploration-derived，不是 pre-registered 的預測。
+4. 這就是這篇論文對傳播理論的貢獻：機制不是單一的。單一構念的框架連這個問題都問不出來，因為它沒有地方安放這個差異。
+5. （Provenance 的揭露放在下一張，不要在這裡先講掉。）
 :::
 
 ---
 
-## What This Study Does Not Claim
+## What This Study Does and Does Not Claim {.smaller-content}
 
-Do not cut. Four items:
+:::: {.columns}
+::: {.column width="58%"}
+#### Does
 
-- **Provenance** — H1a, H2b, H3a, H3b carried forward; H1b, H2a, H2c, H3c exploration-derived; both readings of the distrust ranking are post-hoc.
-- **Design** — cross-sectional; self-report; longitudinal/trace data would model distress–exposure coevolution directly.
-- **Partisan confounding** — individual party ID is in only one pooled wave. Imputing it from aggregate outlet ideology is a textbook **ecological inference** error, and would over-control the repertoire predictor itself. The labeling protocol makes the same restraint structural: it assigns clusters no ideological orientation at all.
-- **Strong inference** — H3a and H3b were genuinely pre-stated as rivals, so the mixed, largely-null pattern is a contribution, not a failure to be spun as confirmation.
+- **Repertoires differentiate both facets** — the 14-df block is significant on all `r nrow(h1a_h1b_omnibus)` outcomes, under both estimators. H1a and H1b supported.
+- **The two facets do not order audiences the same way** — cluster 3 (`r clab(3)`) is elevated on all four threat facets yet sits at rank `r fm_row("J4_distrust", 3)$rank` of 15 in distrust. A one-construct account cannot produce that.
+- **Media distrust erodes both tie types, and bridging ~`r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`× harder** — H3a and H3c supported, design-robust on bridging.
+- **Amplification and attenuation coexist** across repertoires — conditional cultivation's own boundary case, not a contradiction.
+- **A fifteen-repertoire typology with a documented labeling protocol** — 30 replicates, agreement measured and reported, no ideological field.
+- **H3a and H3b were pre-stated as genuine rivals and adjudicated** — strong inference, not HARKing.
 
-[No single hypothesis now owns the integrated moderated-mediation claim once headlined.]{.neon-cyan}
+These survived a filter built to kill them: an omnibus gate, reference-free corroboration, and a second estimator, applied **before** anything was allowed to count. The RQ2 funnel is the clearest illustration — `r n_sig_int` significant terms → `r n_corrob_w` corroborated → **`r n_interp` interpretable**.
+:::
+::: {.column width="42%"}
+#### Does not
+
+- **Provenance** — H1a, H2b, H3a, H3b carried forward; H1b, H2a, H2c, H3c exploration-derived; both readings of the distrust ranking post-hoc.
+- **Design** — cross-sectional, self-report; longitudinal or trace data would model distress–exposure coevolution directly.
+- **Partisan confounding** — party ID sits in only one pooled wave. Imputing it from aggregate outlet ideology is an **ecological inference** and would over-control the repertoire predictor itself. The labeling protocol makes the restraint structural: no ideological orientation is assigned at all.
+:::
+::::
+
+[Most of what could have been claimed was discarded on purpose — that is what makes the left-hand column worth believing.]{.neon-cyan}
 
 [Robinson (1950); Schuessler (1999); Platt (1964); Kerr (1998).]{.citation}
 
 ::: notes
-1. [⏱ 0:50]
-2. 個人政黨傾向只存在於其中一波，我們拒絕用媒體的整體意識形態傾向去推算個人政黨傾向——這是教科書等級的 ecological inference 問題，也可能過度控制了 repertoire 這個預測變項本身。
-3. 這次的標籤協定把這個限制變成結構性的：schema 完全沒有 ideological orientation 欄位。
-4. H3a 與 H3b 是事前就設定好的競爭假設，所以混合、大致為零的結果是一項貢獻，不是把失敗包裝成確認。
-5. 這張投影片不能被刪——它是整場演講對 claim scope 的揭露。
+1. [⏱ 1:10]
+2. **這張投影片的重點是左邊，不是右邊。** 舊版把它做成一張道歉清單，這是錯的——嚴格性是「相信這些發現」的**理由**，不是需要致歉的東西。
+3. 左邊六項快速帶過，語氣要肯定：兩個 facet 都被 repertoire 分化；兩個 facet 的排序不同；distrust 侵蝕兩種 tie，bridging 大約快 `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)` 倍；放大與減弱並存；一個有記錄的標籤協定；H3a/H3b 事前就是競爭假設。
+4. **然後停一下講那句話**：這些是通過了一個「為了殺死它們而設計的過濾器」之後還留下來的。omnibus gate、reference-free corroboration、第二個估計法——都在任何東西被允許算數**之前**就套用了。
+5. RQ2 的漏斗是最清楚的例子：`r n_sig_int` 個顯著項 → `r n_corrob_w` 個被 corroborate → 只剩 `r n_interp` 個 interpretable。**大部分本來可以宣稱的東西，是被刻意丟掉的。**
+6. 右邊三項照實講，不要拖：provenance（H1b、H2a、H2c、H3c 是 exploration-derived）；design（橫斷面、自陳）；partisan confounding。
+7. Partisan 那一項要講到位：個人政黨傾向只在其中一波，我們拒絕用媒體的整體意識形態傾向去推算個人傾向——這是教科書等級的 ecological inference 問題，也會過度控制 repertoire 這個預測變項本身。標籤協定把這個限制變成結構性的：schema 完全沒有 ideological orientation 欄位。
+8. **這張投影片不能被刪**——它是整場演講對 claim scope 的揭露，而且現在也是最後一次把貢獻講清楚的機會。
 :::
 
 ---
 
-## References {.tight}
+## References {.tight .scrollable}
 
 - Bennett, W. L., & Livingston, S. (2018). The disinformation order: Disruptive communication and the decline of democratic institutions. *European Journal of Communication, 33*(2), 122–139. https://doi.org/10.1177/0267323118760317
 - Chadwick, A. (2017). *The hybrid media system* (2nd ed.). Oxford University Press.
 - Skrzypczak, J. (2019). The effect of the "China factor" on Taiwan's media system security as an example of the "privatization and outsourcing" of censorship and propaganda in the digital age. *Przegląd Strategiczny*, (12), 353–365. https://doi.org/10.14746/ps.2019.1.22
-- Chang, C., Hung, Y.-C., & Hsieh, M. (2023). We are what we consume: Predicting independent voters' voting preference from their media diet color. *Social Science Computer Review, 42*(3), 661–680. https://doi.org/10.1177/08944393231214027
+- Chang, A. C., & Tang, Y.-C. (2023). The political foundation of mainstream media trust in East and Southeast Asia: A cross-national analysis. *Asian Politics & Policy, 15*(4), 585–604. https://doi.org/10.1111/aspp.12715
 - Strömbäck, J., Tsfati, Y., Boomgaarden, H., Damstra, A., Lindgren, E., Vliegenthart, R., & Lindholm, T. (2020). News media trust and its impact on media use: Toward a framework for future research. *Annals of the International Communication Association, 44*(2), 139–156. https://doi.org/10.1080/23808985.2020.1755338
 - Knudsen, E., Dahlberg, S., Iversen, M. H., Johannesson, M. P., & Nygaard, S. (2021). How the public understands news media trust: An open-ended approach. *Journalism, 23*(11), 2347–2363. https://doi.org/10.1177/14648849211005892
 - DiMaggio, P., Nag, M., & Blei, D. (2013). Exploiting affinities between topic modeling and the sociological perspective on culture. *Poetics, 41*(6), 570–606. https://doi.org/10.1016/j.poetic.2013.08.004
 - Grimmer, J., & Stewart, B. M. (2013). Text as data: The promise and pitfalls of automatic content analysis methods for political texts. *Political Analysis, 21*(3), 267–297. https://doi.org/10.1093/pan/mps028
 - Pham, C. M., Hoyle, A., Sun, S., Resnik, P., & Iyyer, M. (2024). TopicGPT: A prompt-based topic modeling framework. In *Proceedings of NAACL-HLT 2024* (pp. 2956–2984). Association for Computational Linguistics. https://doi.org/10.18653/v1/2024.naacl-long.164
+- Brin, S., Motwani, R., Ullman, J. D., & Tsur, S. (1997). Dynamic itemset counting and implication rules for market basket data. *ACM SIGMOD Record, 26*(2), 255–264. https://doi.org/10.1145/253262.253325
+- Hahsler, M. (2015). *A probabilistic comparison of commonly used interest measures for association rules*. https://mhahsler.github.io/arules/docs/measures
+- Lavrač, N., Flach, P., & Zupan, B. (1999). Rule evaluation measures: A unifying view (pp. 174–185). Springer Berlin Heidelberg. https://doi.org/10.1007/3-540-48751-4_17
+- Monroe, B. L., Colaresi, M. P., & Quinn, K. M. (2008). Fightin' words: Lexical feature selection and evaluation for identifying the content of political conflict. *Political Analysis, 16*(4), 372–403. https://doi.org/10.1093/pan/mpn018
+- Song, H., Kull, M., Flach, P., & Kalogridis, G. (2016). Subgroup discovery with proper scoring rules (pp. 492–510). Springer International Publishing. https://doi.org/10.1007/978-3-319-46227-1_31
+- Tan, P.-N., Kumar, V., & Srivastava, J. (2004). Selecting the right objective measure for association analysis. *Information Systems, 29*(4), 293–313. https://doi.org/10.1016/s0306-4379(03)00072-3
 
 ::: notes
-1. 這一頁與下一頁的引用來自 IIS-auto.bib，逐一核對過 citekey。
+1. 這一頁與下一頁的引用來自 IIS-auto.bib，逐一核對過 citekey，也核對過每個引用是否真的支持它被掛上的那句話。
+2. 後六筆是 slide「Naming Them」的測量文獻（added value / lift / subgroup discovery），來自 appendix S2.1。
 :::
 
 ---
 
-## References II {.tight}
+## References II {.tight .scrollable}
 
 - Hetsroni, A. (2014). Ceiling effect in cultivation. *Journal of Media Psychology, 26*(1), 10–18. https://doi.org/10.1027/1864-1105/a000099
 - Russell, C. A., & Buhrau, D. (2015). The role of television viewing and direct experience in predicting adolescents' beliefs about the health risks of fast-food consumption. *Appetite, 92*, 200–206. https://doi.org/10.1016/j.appet.2015.05.023
@@ -731,6 +921,8 @@ Do not cut. Four items:
 - Leong, A. D., McComas, K. A., Balog-Way, D. H. P., & Schuler, K. L. (2023). Expanding on behavioral outcomes in the risk information seeking and processing model. *Science Communication, 45*(3), 310–336. https://doi.org/10.1177/10755470231165489
 - Neyazi, T. A., Kalogeropoulos, A., & Nielsen, R. K. (2021). Misinformation concerns and online news participation among internet users in India. *Social Media + Society, 7*(2). https://doi.org/10.1177/20563051211009013
 - Goodwin, R., Willson, M., & Stanley, G. (2005). Terror threat perception and its consequences in contemporary Britain. *British Journal of Psychology, 96*(4), 389–406. https://doi.org/10.1348/000712605x62786
+- Hameleers, M., & Garnier Ortiz, M. (2024). Risk perceptions of misinformation exposure across platforms, issues, modalities, and countries: A comparative study across the Global North and South. *The International Journal of Press/Politics, 31*(2), 344–366. https://doi.org/10.1177/19401612241304050
+- Matthes, J., Corbu, N., Jin, S., Theocharis, Y., Schemer, C., van Aelst, P., … Zoizner, A. (2022). Perceived prevalence of misinformation fuels worries about COVID-19: A cross-country, multi-method investigation. *Information, Communication & Society, 26*(16), 3133–3156. https://doi.org/10.1080/1369118x.2022.2146983
 - Robinson, W. S. (1950). Ecological correlations and the behavior of individuals. *American Sociological Review, 15*(3), 351. https://doi.org/10.2307/2087176
 - Schuessler, A. A. (1999). Ecological inference. *Proceedings of the National Academy of Sciences, 96*(19), 10578–10581. https://doi.org/10.1073/pnas.96.19.10578
 - Platt, J. R. (1964). Strong inference. *Science, 146*(3642), 347–353. https://doi.org/10.1126/science.146.3642.347
@@ -898,26 +1090,40 @@ design_concordance_summary %>%
 
 ---
 
-## B6 — Power for the RQ2 Interaction Blocks {.tight .scrollable}
+## B6 — What the RQ2 Interaction Blocks Can Detect {.tight .scrollable}
 
 ```{r}
-#| label: tbl-b6-power
+#| label: tbl-b6-mde
+# Appendix v5.1 S4.2 REMOVED the old per-cell power table (min. detectable vs observed f2,
+# with a "Powered" verdict) as post-hoc power reasoning. This backup slide now carries the
+# design-property statement that replaced it: what the design can detect, full stop.
 rq2_power_table %>%
+  distinct(N, df1, df2, min_detectable_f2) %>%
+  arrange(N) %>%
   transmute(
-    Mediator = mediator,
-    Moderator = ifelse(moderator == "N3_z", "Security", "Distress"),
-    N = format(N, big.mark = ","),
-    `Min. det. f2` = sprintf("%.4f", min_detectable_f2),
-    `Observed f2` = sprintf("%.4f", observed_f2),
-    `Powered` = ifelse(adequately_powered, "yes", "no")
+    `Interaction block` = ifelse(N == max(N),
+                                 "Media-distrust cells (2 of 10)",
+                                 "Threat-facet cells (8 of 10)"),
+    N   = format(N, big.mark = ","),
+    df  = paste0(df1, ", ", format(df2, big.mark = ",")),
+    `Min. detectable f² (80% power, α = .05)` = sprintf("%.4f", min_detectable_f2)
   ) %>%
   knitr::kable()
 ```
 
-[Design-effect check: `r design_effect_diagnostic$term[1]` SE ratio (design/lm) = `r sprintf("%.2f", design_effect_diagnostic$se_ratio[1])`.]{.citation}
+The 14-df repertoire × moderator block detects $f^2 \ge$ `r sprintf("%.4f", min(rq2_power_table$min_detectable_f2))`–`r sprintf("%.4f", max(rq2_power_table$min_detectable_f2))` at 80% power, α = .05 — well below conventional small-effect benchmarks.
+
+::: {.theory-box}
+**A closed gate therefore rules out repertoire-level moderation of ordinary size.** Moderation smaller than that threshold is not ruled out, and we do not claim it is. This is a property of the **design**, stated and stopped there: comparing each cell's *observed* effect against its own minimum detectable effect would be post-hoc power reasoning — the observed effect and the *p*-value are two expressions of the same quantity, so the comparison cannot supply evidence the *p*-value did not already carry.
+:::
+
+[Design-effect check: `r design_effect_diagnostic$term[1]` SE ratio (design/lm) = `r sprintf("%.2f", design_effect_diagnostic$se_ratio[1])`. Appendix S4.2.]{.citation}
 
 ::: notes
-1. 每個 cell 都對照自己的最小可偵測 f-squared 檢驗——null 結果是有資訊的，不是不確定的。
+1. 這張備用投影片回答的是「null 結果算不算證據」。
+2. 答案來自 design，不是來自觀察到的效果量：14 df 的交互作用 block 在 80% power、α = .05 下可偵測到 f² 約 `r sprintf("%.4f", min(rq2_power_table$min_detectable_f2))` 以上，遠低於慣例的小效果標準。
+3. 所以 gate 關閉＝排除了「一般大小」的 repertoire-level moderation；比這更小的調節效果沒有被排除，我們也不宣稱被排除。
+4. **不要**把每個 cell 的 observed f² 拿來跟它自己的最小可偵測值比——那是 post-hoc power 推論，appendix v5.1 已經把那張表移除了。observed effect 與 p 值是同一件事的兩種表達。
 :::
 
 ---
