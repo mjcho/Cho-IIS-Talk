@@ -1,0 +1,866 @@
+/*-- scss:defaults --*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// Synthwave '84 — reveal.js / Quarto theme  ·  VERSION 2
+// ────────────────────────────────────────────────────────────────────────────
+// A fuller synthwave / vaporwave / cyberpunk treatment of v1:
+//   · Perspective grid horizon (CSS-only) on section + title slides
+//   · CRT scanline + bloom overlay (global, subtle)
+//   · Sunset gradient text on section dividers
+//   · Orbitron display font for headings (body stays Roboto)
+//   · Refined neon glow (tighter core, wider bloom)
+//   · Density helpers: .smaller-content / .tight  +  tightened global rhythm
+//
+// Pairs with YAML layout fixes (set in the .qmd, not here):
+//   width: 1280 · height: 720 · margin: 0.06 · scrollable per-slide opt-in
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Core palette ──────────────────────────────────────────────────────────
+$sw-bg: #2a2139;        // primary background
+$sw-bg-alt: #34294f;    // secondary background / panels
+$sw-bg-deep: #1c1530;   // deeper background for gradient floor
+$sw-fg: #fdfdfd;        // main foreground text
+$sw-muted: #f4eee4;     // softer foreground text
+
+$sw-pink: #fc28a8;      // primary accent (pink)
+$sw-pink-strong: #f92aad; // intense pink neon
+$sw-cyan: #03edf9;      // cyan accent
+$sw-purple: #6d77b3;    // secondary accent
+$sw-orange: #f97e72;    // warm accent
+$sw-gold: #ffcc66;      // sunset gold
+$sw-green: #72f1b8;     // success / highlight accent
+
+// ── Refined neon shadows ────────────────────────────────────────────────────
+// v2: tighter inner core (crisp letterforms) + wider outer bloom (more "lit").
+$sw-shadow-soft: 0 0 2px #100c0f;
+$sw-shadow-pink: 0 0 1px #fff6, 0 0 7px #fc28a8aa, 0 0 18px #fc28a866;
+$sw-shadow-cyan: 0 0 1px #fff6, 0 0 7px #03edf9aa, 0 0 18px #03edf966;
+$sw-shadow-green: 0 0 1px #fff6, 0 0 7px #72f1b8aa, 0 0 16px #72f1b855;
+$sw-shadow-gold: 0 0 1px #fff6, 0 0 7px #ffcc66aa, 0 0 16px #f39f0555;
+$sw-shadow-red: 0 0 2px #000, 0 0 8px #fc1f2caa, 0 0 22px #fc1f2c66;
+
+// Retain clean.scss-style compatibility variables
+$jet: $sw-bg;
+$accent: $sw-pink;
+$accent2: $sw-cyan;
+$right-arrow: "\2192";
+
+// ── Fonts ─────────────────────────────────────────────────────────────────
+// Body: Roboto (readable). Display: Orbitron (geometric retro-futurist).
+@import url("https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,200;0,300;0,400;1,300&family=Orbitron:wght@500;700;900&display=swap");
+
+$font-family-sans-serif: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !default;
+$font-family-display: "Orbitron", "Roboto", sans-serif;
+$presentation-heading-font: $font-family-display !default;
+
+$presentation-heading-color: $sw-pink-strong !default;
+$presentation-heading-font-weight: 700;
+// v2: trimmed root size (was 28px) — relieves density without per-slide tweaks.
+$presentation-font-size-root: 26px;
+
+// ── Colors ──────────────────────────────────────────────────────────────────
+$body-bg: $sw-bg !default;
+$body-color: $sw-fg !default;
+$link-color: $sw-cyan !default;
+$selection-bg: rgba(3, 237, 249, 0.4) !default;
+
+// ── Code / pre ────────────────────────────────────────────────────────────
+$code-block-bg: $sw-bg-alt !default;
+$code-color: $sw-muted !default;
+$code-block-border-color: rgba(3, 237, 249, 0.3) !default;
+$code-inline-bg: rgba(16, 12, 15, 0.8) !default;
+$code-inline-border-color: rgba(249, 42, 173, 0.6) !default;
+
+
+/*-- scss:rules --*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// 1. BASE CANVAS + ATMOSPHERE
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal {
+  background-color: $body-bg;
+  // Deeper vertical gradient so the grid floor has something to sink into.
+  background-image: linear-gradient(to bottom, $sw-bg 55%, $sw-bg-alt 80%, $sw-bg-deep);
+  background-size: auto 100vh;
+  background-position: top;
+  background-repeat: no-repeat;
+  color: $body-color;
+  font-family: $font-family-sans-serif;
+}
+
+// ── CRT scanlines + bloom (global, very subtle) ─────────────────────────────
+// Fixed overlay above background but below content interactions (pointer-events
+// none). Kept faint so it never hurts legibility on dense content slides.
+.reveal::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  // Horizontal scanlines
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.10) 0px,
+    rgba(0, 0, 0, 0.10) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+}
+
+// ── Perspective grid horizon (CSS-only) ─────────────────────────────────────
+// The signature synthwave floor. Faint on content slides; intensified on
+// section dividers + title slide (see §2). Two stacked gradient layers form the
+// grid; only the horizontal rows (layer 2) animate — vertical lines stay fixed
+// because forward motion in perspective doesn't shift them left/right.
+//
+// The keyframe shifts only layer 2's Y offset by one full tile (5.5vw) so the
+// loop is perfectly seamless. Layer 1 X is always "0 0" (no lateral movement).
+@keyframes sw-grid-scroll {
+  from { background-position: 0 0, 0 0; }      // both layers at origin
+  to   { background-position: 0 0, 0 5.5vw; }  // layer 2 scrolled one full tile down → seamless loop
+}
+
+.reveal::after {
+  content: "";
+  position: fixed;         // fixed to viewport — grid holds still during slide transitions
+  left: -35%;              // wider than the canvas so perspective-splayed edges don't show a hard clip, default was -25%
+  right: -35%;
+  bottom: 0;               // anchored to the bottom of the screen — grid rises from the floor
+  height: 82vh;            // tall enough that the raked plane fills the lower third visually, default was 42vh
+  z-index: 0;              // behind .slides (z:3) but in front of the page background
+  pointer-events: none;    // never intercepts clicks or hovers
+  background-image:
+    // Layer 1 — cyan vertical lines ("longitude" of the grid).
+    // Pattern: 2px cyan stripe, then transparent gap to the next stripe.
+    // Tile width = 5.5vw; changing this widens/narrows the column spacing.
+    repeating-linear-gradient(to right,
+      rgba(3, 237, 249, 0.55) 0, rgba(3, 237, 249, 0.55) 2px,
+      // rgba(252, 40, 168, 0.55) 0, rgba(252, 40, 168, 0.55) 2px,
+      transparent 2px, transparent 5.5vw),
+    // Layer 2 — pink horizontal lines ("latitude" rows); this layer is animated.
+    // Same tile size as layer 1 so the grid cells are square before perspective.
+    // MUST match the 5.5vw keyframe offset — change one, change both.
+    repeating-linear-gradient(to bottom,
+      rgba(252, 40, 168, 0.55) 0, rgba(252, 40, 168, 0.55) 2px,
+      // rgba(3, 237, 249, 0.55) 0, rgba(3, 237, 249, 0.55) 2px,
+      transparent 2px, transparent 5.5vw);
+  transform: perspective(40vh) rotateX(62deg);
+  //   perspective(40vh)  — depth of the virtual camera; smaller = more extreme foreshortening
+  //   rotateX(62deg)     — how steeply the plane tilts back; higher = flatter-looking floor
+  transform-origin: bottom center;  // tilt from the bottom edge so the floor stays on the ground
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,0.5) 35%, transparent 75%);
+          mask-image: linear-gradient(to top, #000 0%, rgba(0,0,0,0.5) 35%, transparent 75%);
+  // Mask fades the grid upward — lines dissolve toward the horizon instead of hard-stopping
+  // Adjust the 35%/75% stops to raise or lower where the fade begins and ends
+  opacity: 0.20;             // dim on content slides — atmosphere, not focal point
+  transition: opacity 1.2s ease;
+  // When §2's :has() rule bumps opacity to 0.32 on section dividers, this eases
+  // the brightness change over 1200ms (default was 400ms) so there's no abrupt pop on slide arrival
+  animation: sw-grid-scroll 3s linear infinite;
+  // 3s = one full tile cycle; linear keeps apparent speed constant (ease would
+  // accelerate/decelerate and look wrong on a looping floor). Increase the
+  // duration to slow down; decrease to speed up. See §2 override for dividers.
+}
+
+// Keep slide content above the atmosphere layers.
+.reveal .slides { z-index: 3; }
+.reveal .slides section { z-index: 3; }
+
+// Global typography rhythm — tightened from v1 (was margin-top: 1.25em).
+.reveal p {
+  font-weight: 300;
+  margin-top: 0.8em;
+}
+
+.reveal a {
+  line-height: 1.5em;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 2. SECTION DIVIDERS + TITLE SLIDE  (the "full" synthwave moment)
+// ════════════════════════════════════════════════════════════════════════════
+// Quarto tags level-1 slides as `.title-slide.slide.level1.center`; the doc
+// title slide is `#title-slide`. We light these up: brighter grid, sunset
+// gradient headline, scanline kept subtle.
+
+// .reveal section.level1,
+// .reveal #title-slide {
+//   // Local brighter grid via a layered radial glow on the horizon.
+//   &::before {
+//     content: "";
+//     position: absolute;
+//     inset: 0;
+//     z-index: -1;
+//     pointer-events: none;
+//     background:
+//       radial-gradient(120% 80% at 50% 118%,
+//         rgba(252, 40, 168, 0.28) 0%,
+//         rgba(109, 119, 179, 0.12) 38%,
+//         transparent 70%);
+//   }
+// }
+
+// Brighten the global grid floor when a section divider or title slide is on screen.
+// opacity 0.32 (vs 0.20 on content) — grid is a visual centerpiece here, not background.
+// animation speed override — faster than content slides (1s vs 5s).
+// Why faster = less blinky: the perspective transform compresses rows near the horizon to
+// sub-pixel spacing. At a medium scroll speed those compressed rows flash at a frequency
+// your eye perceives as flicker (~5–20 Hz). Push the speed high enough and the flashes
+// exceed the flicker-fusion threshold — they blur into smooth motion instead of strobing.
+// Content slides at 5s land in the blinky range; 1s pushes above it.
+.reveal:has(section.level1.present)::after,
+.reveal:has(#title-slide.present)::after {
+  opacity: 0.32;
+  animation: sw-grid-scroll 1.25s linear infinite;
+}
+
+// Closing slide lingers on screen through Q&A — run the grid SLOWER and a touch
+// dimmer than dividers so peripheral motion doesn't pull focus during answers.
+.reveal:has(section.closing.present)::after {
+  opacity: 0.26;
+  animation: sw-grid-scroll 6s linear infinite;
+}
+
+// ── Sunset gradient headline on section dividers ────────────────────────────
+.reveal section.level1 h1 {
+  font-family: $font-family-display;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background: linear-gradient(95deg, $sw-gold 0%, $sw-orange 28%, $sw-pink-strong 62%, $sw-purple 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  // Bloom behind the gradient text (text-shadow can't show through clipped
+  // fill, so we use a drop-shadow filter instead).
+  filter: drop-shadow(0 0 10px rgba(252, 40, 168, 0.55))
+          drop-shadow(0 0 2px rgba(255, 255, 255, 0.35));
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 3. TITLE SLIDE BLOCK
+// ════════════════════════════════════════════════════════════════════════════
+
+#title-slide {
+  text-align: left;
+
+  .title {
+    font-family: $font-family-display;
+    font-size: 1.5em;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.15;
+    color: $sw-pink-strong;
+    text-shadow: $sw-shadow-soft, $sw-shadow-pink;
+  }
+
+  .subtitle {
+    color: $sw-cyan;
+    font-style: italic;
+    margin-top: 0.3em;
+    font-weight: 300;
+    text-shadow: $sw-shadow-soft, $sw-shadow-cyan;
+  }
+
+  .author,
+  .quarto-title-author-name {
+    color: $sw-muted;
+  }
+
+  .quarto-title-authors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    .quarto-title-author {
+      padding-left: 0;
+      padding-right: 0;
+      width: 100%;
+    }
+  }
+
+  .institute,
+  .quarto-title-affiliation,
+  .quarto-title-author-email {
+    font-style: italic;
+    color: $sw-purple;
+  }
+
+  .date,
+  .occassion {
+    color: $sw-purple;
+    font-size: 0.8em;
+    margin-top: 0.5em;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 4. HEADINGS
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal h1 {
+  font-family: $font-family-display;
+  font-size: 1.9em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: $sw-pink-strong;
+  text-shadow: $sw-shadow-soft, $sw-shadow-pink;
+}
+
+.reveal h2 {
+  font-family: $font-family-display;
+  font-size: 1.35em;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: $sw-cyan;
+  text-shadow: $sw-shadow-soft, $sw-shadow-cyan;
+}
+
+.reveal h3 {
+  // Subhead stays Roboto italic — keeps content slides readable, reserves
+  // the display face for the primary heading.
+  font-family: $font-family-sans-serif;
+  font-size: 1.15em;
+  color: $sw-orange;
+  font-style: italic;
+  font-weight: 400;
+  text-shadow: $sw-shadow-soft, $sw-shadow-gold;
+}
+
+.reveal h4 {
+  font-family: $font-family-display;
+  font-weight: 500;
+  color: $sw-muted;
+  letter-spacing: 0.02em;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 5. LINKS / LISTS / BLOCKS
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal a {
+  color: $link-color;
+  text-decoration: none;
+  text-shadow: $sw-shadow-soft, $sw-shadow-cyan;
+  transition: color 0.2s ease, text-shadow 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reveal a:hover {
+  color: $sw-pink-strong;
+  text-shadow: $sw-shadow-soft, $sw-shadow-pink;
+  box-shadow: 0 0 0 1px rgba(252, 40, 168, 0.6);
+}
+
+.reveal ul {
+  font-weight: 300;
+  margin-top: 0.4em;
+}
+
+.reveal ol {
+  font-weight: 300;
+  margin-top: 0.6em;
+}
+
+.reveal li {
+  margin: 0.22em 0;
+}
+
+.reveal ul li::marker,
+.reveal ol li::marker {
+  color: $accent;
+}
+
+.reveal blockquote {
+  border-left: 3px solid $sw-pink;
+  padding-left: 1em;
+  margin-left: 0;
+  color: $sw-muted;
+  text-shadow: $sw-shadow-soft;
+  background: linear-gradient(to right, rgba(252, 40, 168, 0.08), transparent);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 6. CODE
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal pre {
+  background-color: $code-block-bg;
+  border-radius: 0.6rem;
+  padding: 0.75em 1em;
+  border: 1px solid $code-block-border-color;
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.6), inset 0 0 30px rgba(3, 237, 249, 0.04);
+}
+
+.reveal code {
+  font-family: "Fira Code", "JetBrains Mono", "Source Code Pro", monospace;
+  color: $code-color;
+}
+
+.reveal pre code {
+  text-shadow: $sw-shadow-soft;
+}
+
+.reveal :not(pre) > code {
+  padding: 0.08em 0.35em;
+  border-radius: 0.35em;
+  background-color: $code-inline-bg;
+  border: 1px solid $code-inline-border-color;
+  text-shadow: $sw-shadow-soft;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 7. TABLES
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal table {
+  border-collapse: collapse;
+  margin: 1em auto;
+}
+
+.reveal table th,
+.reveal table td {
+  border: 1px solid rgba(253, 253, 253, 0.12);
+  padding: 0.3em 0.7em;
+}
+
+.reveal table thead th {
+  background: linear-gradient(to right, rgba(252, 40, 168, 0.4), rgba(3, 237, 249, 0.4));
+  color: $sw-fg;
+  font-family: $font-family-display;
+  font-weight: 500;
+  font-size: 0.9em;
+  letter-spacing: 0.01em;
+}
+
+.reveal table tbody tr:nth-child(odd) {
+  background: rgba(52, 41, 79, 0.35);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 8. NAVIGATION / PROGRESS / SLIDE NUMBER / MENU
+// ════════════════════════════════════════════════════════════════════════════
+
+.reveal .controls {
+  color: $sw-cyan;
+  text-shadow: $sw-shadow-cyan;
+}
+
+.reveal .controls .navigate-left,
+.reveal .controls .navigate-right,
+.reveal .controls .navigate-up,
+.reveal .controls .navigate-down { opacity: 0.7; }
+
+.reveal .controls .navigate-left.enabled,
+.reveal .controls .navigate-right.enabled,
+.reveal .controls .navigate-up.enabled,
+.reveal .controls .navigate-down.enabled { opacity: 1; }
+
+.reveal .progress { background: rgba(253, 253, 253, 0.06); }
+
+.reveal .progress span {
+  background: linear-gradient(to right, $sw-gold, $sw-pink, $sw-cyan);
+  box-shadow: 0 0 15px rgba(252, 40, 168, 0.75);
+}
+
+.reveal .slide-number {
+  color: $sw-muted;
+  background-color: rgba(16, 12, 15, 0.7);
+  border-radius: 999px;
+  padding: 0.2em 0.8em;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+}
+
+.reveal .slide-menu-button {
+  position: fixed;
+  top: 6px;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.reveal .slide-menu-button a {
+  pointer-events: auto;
+  color: $sw-cyan;
+  text-shadow: $sw-shadow-cyan;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 9. NEON UTILITY CLASSES  (refined glow)
+// ════════════════════════════════════════════════════════════════════════════
+
+.neon-pink  { color: $sw-pink-strong; text-shadow: $sw-shadow-soft, $sw-shadow-pink; }
+.neon-cyan  { color: $sw-cyan;        text-shadow: $sw-shadow-soft, $sw-shadow-cyan; }
+// v2: green now uses a green-tuned glow (was gold — read slightly muddy).
+.neon-green { color: $sw-green;       text-shadow: $sw-shadow-soft, $sw-shadow-green; }
+.neon-gold  { color: $sw-gold;        text-shadow: $sw-shadow-soft, $sw-shadow-gold; }
+.neon-red   { color: #fff5f6;         text-shadow: $sw-shadow-red; }
+
+// Captions, notes, citations
+.caption,
+.reveal .notes,
+.citation {
+  font-size: 0.62em;
+  color: $sw-muted;
+  opacity: 0.85;
+}
+
+// ── Semantic callout panels ─────────────────────────────────────────────────
+// `.theory-box` holds the slide's boundary condition / conceptual "so what".
+// A cyan edge and purple wash distinguish it from ordinary prose without
+// competing with section headings or the single neon-cyan takeaway phrase.
+.reveal .theory-box {
+  margin: 0.75em 0 0.35em;
+  padding: 0.6em 0.85em;
+  border: 1px solid rgba($sw-cyan, 0.42);
+  border-left: 4px solid $sw-cyan;
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(105deg, rgba($sw-cyan, 0.09), rgba($sw-purple, 0.14) 58%, rgba($sw-bg-alt, 0.34));
+  box-shadow:
+    inset 0 0 24px rgba($sw-purple, 0.08),
+    0 0 14px rgba($sw-cyan, 0.10);
+  color: $sw-muted;
+  text-shadow: $sw-shadow-soft;
+
+  p { margin: 0.1em 0; }
+  h4 { margin: 0 0 0.3em; }
+}
+
+// `.stat-card` groups a compact set of headline quantities. The first strong
+// value receives the strongest glow; subsequent values remain large but quieter.
+.reveal .stat-card {
+  margin: 0.35em 0;
+  padding: 0.7em 0.8em;
+  text-align: center;
+  border: 1px solid rgba($sw-purple, 0.62);
+  border-top: 3px solid $sw-cyan;
+  border-radius: 0.65rem;
+  background:
+    radial-gradient(circle at 50% 0%, rgba($sw-cyan, 0.12), transparent 52%),
+    rgba($sw-bg-alt, 0.64);
+  box-shadow:
+    inset 0 0 28px rgba($sw-purple, 0.12),
+    0 0 18px rgba($sw-cyan, 0.10);
+  color: $sw-muted;
+
+  p { margin: 0.25em 0; }
+  strong {
+    display: inline-block;
+    font-family: $font-family-display;
+    font-size: 1.32em;
+    line-height: 1.05;
+    color: $sw-cyan;
+    text-shadow: $sw-shadow-soft, $sw-shadow-cyan;
+  }
+  p:first-child strong {
+    font-size: 1.65em;
+    color: $sw-gold;
+    text-shadow: $sw-shadow-soft, $sw-shadow-gold;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 10. DENSITY HELPERS  (the layout-overflow fix, content side)
+// ════════════════════════════════════════════════════════════════════════════
+// Drop onto a heading to shrink a dense slide so it fits the canvas instead of
+// scrolling:  ## My dense slide {.smaller-content}
+// `.tight` is a stronger variant for the densest two-column slides.
+
+.reveal .smaller-content {
+  font-size: 0.82em;
+  p, li { margin-top: 0.3em; margin-bottom: 0.2em; }
+  h3 { margin-bottom: 0.3em; }
+}
+
+.reveal .tight {
+  font-size: 0.72em;
+  p, li { margin-top: 0.22em; margin-bottom: 0.16em; }
+  ul, ol { margin-top: 0.25em; }
+  h3 { margin-top: 0.2em; margin-bottom: 0.25em; }
+}
+
+// Two-column layout helper (carried from v1)
+.columns6040 div.column:first-child { width: 60%; }
+.columns6040 div.column:not(:first-child) { width: 40%; }
+
+// Bound figures by canvas height so tall diagrams shrink instead of overflowing.
+.reveal .slide figure img,
+.reveal .slide p > img {
+  max-height: 62vh;
+  object-fit: contain;
+}
+
+// Mermaid: default — fit within the canvas without forcing a scroll.
+.reveal .slide pre.mermaid,
+.reveal .slide .mermaid svg {
+  max-width: 100%;
+  max-height: 60vh;
+}
+
+
+// Oversized Mermaid on a flagged slide:  ## Title {.scrollable .big-fig}
+// out-width can't enlarge a Mermaid diagram — mermaid.js writes an inline
+// `max-width: {natural width}px` onto the <svg>, and inline styles beat
+// stylesheet rules. This lifts that cap (and the 60vh height limit) so the
+// diagram scales to fill the slide width; pair with {.scrollable} so the
+// extra height is reachable.
+.reveal section.big-fig .mermaid svg,
+.reveal section.big-fig figure svg {
+  max-width: none !important;
+  max-height: none !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 11. CLOSING SLIDE
+//     .closing          — Concept 2 "two-zone stage" (default)
+//     .closing.horizon  — Concept 1 "text on the horizon" (swap-in modifier)
+// ════════════════════════════════════════════════════════════════════════════
+// Use an EMPTY-title slide so the thesis (a .thesis div) is the hero, not a
+// heading:   ## {.closing}            → two-zone stage
+//            ## {.closing .horizon}   → text on the horizon
+// Shared markup (both layouts):
+//   ::: {.kicker}  audience-credit line  :::
+//   ::: {.thesis}  hero line with [keyword]{.thesis-key}  :::
+//   :::: {.columns}
+//     ::: {.column}  ::: {.ask} Questions? :::  + optional QR chunk  :::
+//     ::: {.column}  ::: {.namecard} portrait + name + contact :::  :::
+//   ::::
+// White thesis for legibility; ONE gradient keyword marks the crux. A small
+// gold kicker credits the audience; the portrait wears a conic chrome ring;
+// an optional auto-generated QR (.qr-box) links out. Grid runs slower here
+// than on dividers (see §2) because the slide lingers through Q&A.
+
+.reveal section.closing {
+  // Two-zone stage light: warm pool behind the thesis (upper-left), cooler cyan
+  // pool behind the portrait (right). Negative insets push each pool's faded
+  // perimeter past the slide edges so they bleed off-screen instead of reading
+  // as contained pools floating inside the slide margin.
+  &::before {
+    content: "";
+    position: absolute;
+    left: -16%;
+    right: -16%;
+    top: -48%;
+    bottom: 0;          // stage sits on the section floor — only L/R/top bleed
+    z-index: -1;
+    pointer-events: none;
+    background:
+      // Warm pool — anchored upper-LEFT, bleeding off the left & top edges.
+      radial-gradient(ellipse 60% 78% at 14% 24%,
+        rgba(249, 42, 173, 0.16) 0%, rgba(255, 204, 102, 0.06) 42%, transparent 82%),
+      // Cyan pool — anchored RIGHT, bleeding off the right edge.
+      radial-gradient(ellipse 52% 66% at 90% 52%,
+        rgba(3, 237, 249, 0.12) 0%, transparent 80%);
+  }
+
+  // Empty slide title (## {.closing}) — collapse it so the kicker leads.
+  > h2:empty { display: none; margin: 0; }
+
+  // ── Kicker — credits the audience (replaces the old "Thank You") ───────────
+  // Small, letter-spaced, uppercase gold label — a warm aside, not a headline.
+  .kicker {
+    font-family: $font-family-display;
+    font-size: 0.7em;
+    font-weight: 500;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: $sw-gold;
+    text-shadow: $sw-shadow-soft, $sw-shadow-gold;
+    margin-bottom: 0.5em;
+    opacity: 0.92;
+  }
+
+  // ── Thesis — the hero. White base; the gradient lives on the keyword only ──
+  .thesis {
+    font-family: $font-family-display;
+    font-size: 1.7em;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.005em;
+    color: $sw-fg;
+    text-shadow: $sw-shadow-soft, 0 0 10px rgba(3, 237, 249, 0.18);
+    max-width: 22ch;            // keep the hero line from sprawling full-width
+  }
+
+  // One emphasized phrase carries the sunset gradient — pulls the eye to the
+  // crux while the rest of the sentence stays high-contrast and readable.
+  .thesis-key {
+    background: linear-gradient(95deg, $sw-gold 0%, $sw-orange 30%, $sw-pink-strong 65%, $sw-purple 100%);
+    -webkit-background-clip: text;
+            background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 10px rgba(252, 40, 168, 0.5));
+  }
+
+  // ── "Questions?" — the literal call to action ─────────────────────────────
+  .ask {
+    font-family: $font-family-display;
+    font-size: 1.15em;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    color: $sw-cyan;
+    text-shadow: $sw-shadow-soft, $sw-shadow-cyan;
+    margin-top: 0.9em;
+  }
+
+  // ── Name card — the right-column human anchor (Concept D) ─────────────────
+  .namecard {
+    h4 { margin: 0 0 0.1em; }
+    p  { margin: 0.1em 0; }
+  }
+
+  // Circular portrait with a conic chrome/sunset ring. The ring is a gradient
+  // BACKGROUND revealed by padding; the photo sits in the content box on top.
+  // For an off-center subject add {style="object-position:top"} on the image.
+  .namecard img {
+    display: block;
+    width: 172px;
+    height: 172px;
+    max-width: none;
+    max-height: none;          // override §10's height cap on figures
+    margin: 0 auto 0.7em;
+    padding: 4px;              // padding width = visible ring thickness
+    border: none;
+    border-radius: 50%;
+    object-fit: cover;
+    background: conic-gradient(from 210deg,
+      $sw-gold, $sw-orange, $sw-pink-strong, $sw-cyan, $sw-purple, $sw-gold);
+    box-shadow:
+      0 0 18px rgba(  3, 237, 249, 0.40),
+      0 0 50px rgba(252,  40, 168, 0.20);
+  }
+
+  // ── QR box (optional) — auto-emitted by the `qr-code` chunk in the QMD ─────
+  // The chunk writes: <div class="qr-box"><img class="qr-img">…<span class="qr-label">.
+  // Sits at the bottom of the LEFT column, deliberately apart from the name card.
+  // Hide it entirely by setting `qr_url <- NULL` in the QMD config chunk.
+  .qr-box {
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    width: max-content;        // shrink-wrap to content instead of full column
+    max-width: 100%;
+    margin-top: 1.3em;
+    padding: 0.5em 0.7em;
+    background: rgba(16, 12, 15, 0.55);
+    border: 1px solid rgba(3, 237, 249, 0.30);
+    border-radius: 0.5em;
+  }
+  .qr-img {
+    width: 92px;
+    height: 92px;
+    margin: 0;                 // cancel §10 figure centering / glow
+    padding: 0;
+    border: none;
+    border-radius: 0.25em;
+    box-shadow: none;
+  }
+  .qr-label {
+    font-size: 0.6em;
+    line-height: 1.3;
+    color: $sw-muted;
+    max-width: 9em;
+  }
+}
+
+// ── Concept 1 modifier: "text on the horizon" ────────────────────────────────
+// Same markup; the thesis floats centered above the grid like the synthwave
+// sun, with one wide glow blooming up from the horizon line. Best when the
+// thesis is the whole show and the name card stays minimal.
+.reveal section.closing.horizon {
+  // ── Horizon knobs ─────────────────────────────────────────────────────────
+  // Tune here, or per-slide via an inline style attribute, e.g.:
+  //   ## {.closing .horizon style="--horizon-y: 78%; --horizon-bottom: -10%;"}
+  //
+  //   --horizon-y       how low the glow's CORE sits (the radial center).
+  //                     LARGER % = lower.  (Plain .horizon only — .bleed ignores it.)
+  //   --horizon-bottom  the glow's BOTTOM edge, as a CSS `bottom` offset.
+  //                     0 = section bottom · NEGATIVE pushes it down toward / over
+  //                     the grid floor · POSITIVE lifts it up, away from the floor.
+  //                     Affects BOTH .horizon and .bleed.
+  --horizon-y: 70%;
+  --horizon-bottom: 0%;
+
+  text-align: center;
+
+  // Ambient sunset rising from the floor. The glow bleeds off the LEFT, RIGHT
+  // and TOP edges (negative insets push its faded perimeter off-screen) so it
+  // never reads as a floating panel — only the bottom meets the grid floor.
+  // Want a defined top edge instead? Use the .bleed variant below.
+  &::before {
+    left: -15%;
+    right: -15%;
+    top: -12%;                      // bleed past the top edge too — no contained-blob outline
+    bottom: var(--horizon-bottom);  // bottom-edge knob (see above)
+    background: radial-gradient(ellipse 90% 78% at 50% var(--horizon-y),
+      rgba(255, 204, 102, 0.20) 0%,
+      rgba(252,  40, 168, 0.13) 45%,
+      rgba(109, 119, 179, 0.06) 70%,
+      transparent 95%);   // fade lands off-screen on L/R/T, so no visible boundary
+  }
+
+  .thesis {
+    font-size: 2.05em;
+    max-width: 18ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .ask { margin-top: 0.6em; }
+
+  // Center the column contents so card + QR sit centered "on the floor".
+  .columns { justify-content: center; }
+  .namecard img,
+  .qr-box { margin-left: auto; margin-right: auto; }
+}
+
+// Banded variant of the horizon glow:  ## {.closing .horizon .bleed}
+// Bleeds off the LEFT and RIGHT but keeps a soft TOP EDGE — an illuminated band
+// the content pops above. (Plain .horizon above bleeds the top too, for a fully
+// ambient look with no edge.)
+.reveal section.closing.horizon.bleed::before {
+  left: -12%;            // overflow the section box past the slide's L/R edges
+  right: -12%;
+  top: 0;                // keep the top edge put — don't inherit .horizon's top bleed
+  bottom: var(--horizon-bottom);  // shared bottom-edge knob — moves the band toward / off the floor
+  background:
+    // Center-warmth sun — adds glow toward the middle, fading to transparent so
+    // it never creates a hard side edge (the wash below carries the full width).
+    radial-gradient(ellipse 50% 46% at 50% 62%,
+      rgba(255, 204, 102, 0.14) 0%, transparent 70%),
+    // Full-width wash with a soft top edge (the "pop"): uniform horizontally, so
+    // it bleeds cleanly off the left and right edges of the slide.
+    linear-gradient(to top,
+      rgba(252,  40, 168, 0.16) 0%,
+      rgba(109, 119, 179, 0.06) 45%,
+      transparent 72%);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 12. REDUCED-MOTION / PRINT SAFETY
+// ════════════════════════════════════════════════════════════════════════════
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal::after { transition: none; animation: none; }
+}
+
+// In PDF export, drop the fixed overlays (they tile oddly across printed pages).
+.reveal.print-pdf::before,
+.reveal.print-pdf::after { display: none; }
+

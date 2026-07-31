@@ -1,0 +1,5 @@
+*_files/
+*_cache/
+.quarto/
+.DS_Store
+fonts/

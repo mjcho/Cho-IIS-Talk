@@ -1,0 +1,955 @@
+---
+title: "Insecure Island Syndrome"
+subtitle: "Media Repertoires, Informational Threats, and Social Connectedness in a Fragmented Media System"
+author:
+  - name: "Mu-Jung Cho | 卓牧融"
+    orcid: '0000-0001-5500-6336'
+    email: 'mjcho@as.edu.tw'
+    affiliations:
+      - name: 'RCHSS, Academia Sinica'
+  - name: "Chia-Ming Hsu"
+    affiliations:
+      - name: 'RCHSS, Academia Sinica'
+format:
+  revealjs:
+    template-partials:
+      - title-slide.html
+    theme: [default, synthwave84-reveal-2.scss]
+    width: 1280
+    height: 720
+    margin: 0.06
+    slide-number: c
+    incremental: false
+    slide-level: 2
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  error: false
+occassion: "TODO-VENUE"
+date: last-modified
+editor:
+  render-on-save: true
+---
+
+```{r}
+#| label: setup
+#| echo: false
+#| cache: false
+
+knitr::opts_chunk$set(dev = "svglite", dev.args = list(bg = "transparent"))
+
+suppressMessages({
+  library(tidyverse)
+  library(survey)
+  library(glue)
+  library(forcats)
+  library(stringi)
+  library(broom)
+  library(gt)
+})
+
+theme_sw <- function(base_size = 13) {
+  ggplot2::theme_minimal(base_size = base_size) +
+  ggplot2::theme(
+    plot.background  = ggplot2::element_rect(fill = NA, colour = NA),
+    panel.background = ggplot2::element_rect(fill = NA, colour = NA),
+    legend.background = ggplot2::element_rect(fill = NA, colour = NA),
+    text        = ggplot2::element_text(colour = "#f4eee4"),
+    axis.text   = ggplot2::element_text(colour = "#f4eee4"),
+    axis.title  = ggplot2::element_text(colour = "#f4eee4"),
+    panel.grid.major = ggplot2::element_line(colour = "#6d77b3", linewidth = 0.2),
+    panel.grid.minor = ggplot2::element_blank()
+  )
+}
+
+# --- Resolve the canonical export (glob on version prefix; never hard-code a version) ----
+export_path <- Sys.getenv("IIS_EXPORT", unset = NA_character_)
+if (is.na(export_path)) {
+  cands <- sort(Sys.glob("../../Cho-IIS/Analysis/Analysis_v*_export.RData"), decreasing = TRUE)
+  stopifnot(length(cands) >= 1)
+  export_path <- cands[1]
+}
+stopifnot(file.exists(export_path))
+load(export_path)
+
+# The SAME provisional 2026-07 cluster-label override that Manuscript_v5.3_2026-07-31.qmd
+# and Appendix_v5.1_2026-07-31.qmd both source, applied here so the deck's cluster names
+# match the paper's rather than the superseded trial-76 English names baked into the export.
+# `chdir = TRUE` is required: the script's own internal CSV read is relative to the
+# Manuscript folder, not to this deck's folder.
+source("../../Cho-IIS/Manuscript/_cluster_labels_override.R", chdir = TRUE)
+
+# --- accessor helpers, ported verbatim from Manuscript_v5.3_2026-07-31.qmd's Setup chunk,
+# plus inv_row/j4cov from Appendix_v5.1_2026-07-31.qmd's Setup chunk (spec S3) -------------
+model_stat <- function(model, field) model_fit_stats[[field]][match(model, model_fit_stats$model)]
+coef_row <- function(term) path_b_table %>% filter(.data$term == !!term) %>% slice(1)
+coef_row_bosc <- function(term) path_b_bosc_table %>% filter(.data$term == !!term) %>% slice(1)
+fmt_est <- function(x, digits = 3) sprintf(paste0("%.", digits, "f"), x)
+fmt_p <- function(p) {
+  if (p < .001) return("< .001")
+  paste0("= ", sub("^0", "", sprintf("%.3f", p)))
+}
+fmt_pv <- function(p) if (p < .001) "< .001" else sub("^0", "", sprintf("%.3f", p))
+fmt_nz <- function(x, digits = 3) {
+  s <- sprintf(paste0("%.", digits, "f"), x)
+  sub("^(-?)0\\.", "\\1.", s)
+}
+fmt_nz_signed <- function(x, digits = 3) {
+  s <- sprintf(paste0("%+.", digits, "f"), x)
+  sub("^([+-])0\\.", "\\1.", s)
+}
+fmt_ci_nz <- function(lo, hi, digits = 3) {
+  paste0("[", fmt_nz(lo, digits), ", ", fmt_nz(hi, digits), "]")
+}
+fmt_ci <- function(lo, hi, digits = 3) sprintf(paste0("[%.", digits, "f, %.", digits, "f]"), lo, hi)
+
+rq2_row <- function(med, mod) {
+  rq2_verdict_table %>% filter(.data$mediator == med, .data$moderator == mod) %>% slice(1)
+}
+h1_row <- function(out) h1a_h1b_omnibus %>% filter(.data$outcome == out) %>% slice(1)
+h1_coef <- function(out, cl) {
+  h1_cluster_coefficients %>%
+    filter(.data$outcome == out, .data$term == paste0("cluster", cl)) %>% slice(1)
+}
+fm_row <- function(fct, cl) {
+  h1_facet_map %>% filter(.data$facet == fct, .data$cluster == cl) %>% slice(1)
+}
+rq2_term <- function(med, mod, cl) {
+  rq2_coefficient_slope_comparison %>%
+    filter(.data$mediator == med, .data$moderator == mod, .data$cluster == cl) %>% slice(1)
+}
+bpath <- function(med, out) {
+  h3ab_bpath_table %>% filter(.data$mediator == med, .data$outcome == out) %>% slice(1)
+}
+h3c_row <- function(med) {
+  h3c_tie_type_table %>%
+    filter(.data$mediator == med, str_detect(.data$quantity, "^b-path")) %>% slice(1)
+}
+ie_row <- function(out, cl) {
+  h3_distrust_indirect_table %>% filter(.data$outcome == out, .data$cluster == cl) %>% slice(1)
+}
+n_sig_int    <- sum(rq2_coefficient_slope_comparison$b_p < .05, na.rm = TRUE)
+n_corrob_w   <- sum(rq2_coefficient_slope_comparison$slope_corroborated_weighted, na.rm = TRUE)
+n_corrob_d   <- sum(rq2_coefficient_slope_comparison$slope_corroborated, na.rm = TRUE)
+n_interp     <- sum(rq2_coefficient_slope_comparison$interpretable_as_moderation, na.rm = TRUE)
+n_gate_open  <- sum(!rq2_verdict_table$omnibus_null)
+n_gate_shut  <- sum(rq2_verdict_table$omnibus_null)
+n_design_agree <- sum(rq2_verdict_table$design_concordant)
+gate_open_cells <- rq2_verdict_table %>%
+  filter(!omnibus_null) %>%
+  transmute(lbl = paste0(mediator, " × ",
+                         ifelse(moderator == "N3_z", "security values", "distress"))) %>%
+  pull(lbl) %>%
+  paste(collapse = "; ")
+mdc <- measurement_distinction_corr$long
+r_of <- function(a, b) {
+  mdc$r[(mdc$row == a & mdc$col == b) | (mdc$row == b & mdc$col == a)][1]
+}
+inv_row <- function(cmp) invariance_differences %>% filter(.data$comparison == cmp) %>% slice(1)
+j4cov <- j4_construction_validation$channel_coverage
+```
+
+```{r}
+#| label: provenance
+#| echo: false
+#| results: asis
+cat(sprintf(
+  "<!-- IIS deck data provenance -- export: %s | manuscript: Manuscript_v5.3_2026-07-31.qmd | appendix: Appendix_v5.1_2026-07-31.qmd | cluster labels: provisional 2026-07-31 override, pending adjudication -->\n",
+  export_path
+))
+```
+
+```{r}
+#| label: title-bg
+#| echo: false
+#| results: asis
+#| warning: false
+
+# --- Dynamic title background -------------------------------------------
+# Leave NULL for a random pick; set to a filename in ../BG to override.
+bg_choice <- NULL          # e.g. "sunset_grid.png"
+
+bg_dir   <- "../BG"
+bg_files <- list.files(bg_dir, pattern = "\\.(png|jpe?g|gif|webp)$",
+                       ignore.case = TRUE, full.names = TRUE)
+
+if (length(bg_files) > 0) {
+  pick <- if (is.null(bg_choice)) {
+    bg_files[sample.int(length(bg_files), 1)]   # random
+  } else {
+    file.path(bg_dir, bg_choice)                # override
+  }
+
+  if (file.exists(pick)) {
+    uri <- xfun::base64_uri(pick)   # -> "data:image/png;base64,...."
+    cat(paste0(
+      '<script>(function(){',
+      'var u="', uri, '";',
+      'function apply(){',
+        'var t=document.getElementById("title-slide");',
+        'if(!t)return false;',
+        't.setAttribute("data-background-image",u);',
+        't.setAttribute("data-background-size","cover");',
+        't.setAttribute("data-background-position","center");',
+        't.setAttribute("data-background-opacity","0.1");',
+        'if(window.Reveal&&Reveal.sync)Reveal.sync();',
+        'return true;};',
+      'if(window.Reveal&&Reveal.isReady&&Reveal.isReady()){apply();}',
+      'else{document.addEventListener("DOMContentLoaded",function(){',
+        'var n=0,iv=setInterval(function(){',
+          'if((window.Reveal&&Reveal.isReady&&Reveal.isReady()&&apply())||++n>100)',
+          'clearInterval(iv);},50);});}',
+      '})();</script>'
+    ))
+  }
+}
+```
+
+# The Puzzle
+
+---
+
+## Roadmap
+
+1. **The one-construct assumption** — why treating informational insecurity as a single thing fails
+2. **Fifteen media repertoires** — discovered by clustering, named by an LLM labeling agent
+3. **What each facet does downstream** — differentiation, moderation, and two divergent effects on social capital
+4. **What this buys communication theory** — a mechanism that is not singular
+
+[Informational insecurity has (at least) two facets, and only one of them erodes connectedness.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:30]
+2. 我會用四個部分來發展一個核心論點。
+3. 首先，把 informational insecurity 當成單一 construct 為什麼行不通。
+4. 第二，十五個媒體 repertoires，如何被發現、如何被命名。
+5. 第三，每個 facet 在下游分別做了什麼。
+6. 最後，這對傳播理論帶來什麼貢獻。
+:::
+
+---
+
+## A Fragmented Media System — and a Hard Case
+
+:::: {.columns}
+::: {.column width="52%"}
+#### Fragmented, hybrid media systems
+
+- parallel informational ecosystems, not one shared environment
+- ideological division, algorithmic filtering
+- contested credibility of outlets and gatekeepers
+:::
+::: {.column width="48%"}
+#### Why Taiwan is a hard case
+
+- cross-strait informational pressure
+- documented outlet-level ownership and self-censorship pressures
+- low baseline trust in TV news
+:::
+::::
+
+[Audiences navigate parallel informational ecosystems, not one shared environment.]{.neon-cyan}
+
+[Bennett & Livingston (2018); Chadwick (2017); Skrzypczak (2019); Chang et al. (2023).]{.citation}
+
+::: notes
+1. [⏱ 0:50]
+2. 破碎化、混合式的媒體系統，改變了人們理解風險與歸屬的方式。
+3. 閱聽人現在面對的是平行的資訊生態系，而不是單一共享環境。
+4. 台灣是一個特別困難的案例：兩岸資訊壓力、媒體所有權與自我審查的紀錄，以及電視新聞信任基準偏低。
+5. 這是整場演講的經驗場景設定。
+:::
+
+---
+
+## One Construct, or Two?
+
+:::: {.columns}
+::: {.column width="50%"}
+#### Perceived informational threat
+
+Media content is manipulative, hostile, sensational, or false.
+:::
+::: {.column width="50%"}
+#### Media distrust
+
+Low assessed credibility of the outlets that make up the media system.
+:::
+::::
+
+::: {.theory-box}
+**M1:** separability is a **measurement premise**, not a hypothesis under test — the media-trust literature has no agreed operationalization, and audiences parse the construct multiply.
+:::
+
+[The two facets are stated as separable by premise, not proven separable as a finding.]{.neon-cyan}
+
+[Strömbäck et al. (2020); Knudsen et al. (2021).]{.citation}
+
+::: notes
+1. [⏱ 1:00]
+2. 這是整場演講的概念轉折點。
+3. Perceived informational threat 關心的是內容本身；media distrust 關心的是對媒體機構可信度的整體評估。
+4. M1 是一個 measurement premise，不是待檢驗的 hypothesis——媒體信任文獻本身就沒有共同的操作型定義，一般民眾對這個構念的理解也是多元的。
+5. 後面 RQ1 的結果，會是這個 premise 的經驗內容，而不是對它的檢驗。
+:::
+
+---
+
+## IIS: The Framework and What It Predicts
+
+```{r}
+#| label: tbl-hyp-grid
+tibble::tribble(
+  ~RQ, ~Hypotheses, ~Content,
+  "RQ1", "H1a, H1b", "Repertoires differentiate perceived threat and, separately, media distrust.",
+  "RQ2", "H2a / H2b / H2c", "No moderation / amplification / attenuation of repertoire -> threat by distress or security values.",
+  "RQ3", "H3a / H3b / H3c", "Erosion vs. compensation of social capital; H3c is a magnitude claim about tie-type strength."
+) %>%
+  knitr::kable()
+```
+
+::: {.theory-box}
+H2b and H2c are alternatives *within* a cell but **not mutually exclusive across repertoires** — amplification in one, attenuation in another, is a patterned outcome, not a contradiction.
+:::
+
+[The framework states competing predictions ex ante and adjudicates each per facet.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:20]
+2. RQ1 問repertoires 是否讓兩個 facet 出現不同的分化型態。
+3. RQ2 把 H2a/H2b/H2c 設定成三分結構：不調節、放大、或減弱。
+4. RQ3 把 erosion 與 compensation 設為對立假設，並加入 H3c 這個關於「強度」而非「方向」的主張。
+5. 重點是：H2b 與 H2c 在同一個 cell 內互斥，但跨 repertoire 並不互斥——兩者同時出現是結果，不是矛盾。
+:::
+
+# Finding and Naming Media Repertoires
+
+---
+
+## Data and the Sample Funnel
+
+Taiwan Communication Survey, nationally representative, stratified multi-stage PPS. Pooled 2022 + 2024 outcome sample, wave weights normalized to within-wave mean 1, `Year` fixed effect. The 2023 wave enters the typology only — it carries no threat battery.
+
+::: {.stat-card}
+**`r format(n_clustered, big.mark = ",")`** 3-wave typology sample
+
+**`r format(n_outcome, big.mark = ",")`** outcome sample (2022+2024; 2,015 + 2,016)
+
+**`r format(n_analytic, big.mark = ",")`** analytic (noise cluster dropped)
+
+**`r format(n_modeled, big.mark = ",")`** modeled (complete-case)
+
+**`r format(n_j4_analytic, big.mark = ",")`** distrust-model analytic (*n*<sub>J4</sub>)
+:::
+
+[The funnel narrows for different reasons at each step, not by attrition alone.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. TCS 是全國代表性的多階段 PPS 抽樣調查。
+3. 三波合併的分群樣本用於建立 typology；2022+2024 的結果樣本用於後續模型。
+4. 每個波的權重先做 within-wave 常態化，再合併，並加入 Year 固定效果。
+5. 2023 只用於 typology，因為它沒有 threat battery、社會資本模組或 distress 題組。
+:::
+
+---
+
+## Discovering Repertoires: UMAP + HDBSCAN + Optuna
+
+Binary indicators of frequent use across 100+ news sources (TV, online, hybrid) → UMAP → HDBSCAN, Optuna-tuned. **Trial 76** selected on DBCV, the primary criterion for density-based solutions, with noise ratio, silhouette, Calinski–Harabasz and Davies–Bouldin as secondary comparisons.
+
+:::: {.columns}
+::: {.column width="55%"}
+- relational configurations of **co-used sources**, not summed exposure volume
+- why *repertoire*, not *media diet*
+- Trial 76 sits at the high-DBCV frontier with a balanced cluster-size distribution
+:::
+::: {.column width="45%"}
+```{r}
+#| label: fig-cluster-metrics-slide
+#| fig-width: 5
+#| fig-height: 4.2
+fig_cluster_metrics_obj + theme_sw()
+```
+:::
+::::
+
+[Repertoires are relational configurations of co-used sources, not summed exposure volume.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:00]
+2. 分群的輸入是 100 多個新聞來源的二元使用指標。
+3. UMAP 降維、HDBSCAN 分群，超參數由 Optuna 調校，Trial 76 在 DBCV 上被選為最終解。
+4. Silhouette 在整個 trial 空間中變化幅度很窄，區辨力較弱，所以只作為輔助指標，不與 DBCV 並列成同一件事。
+5. 核心論點：repertoire 是共同使用來源的關係型配置，不是加總的暴露量——這也是為什麼用 repertoire 而不是 media diet。
+:::
+
+---
+
+## Naming Them: LLM Structured Labeling
+
+Twenty (or fewer) outlets a cluster **over-uses**, ranked by **added value** — the gap between within-cluster and population prevalence → `gpt-5.6-sol` labeling agent, structured JSON (label, summary, keywords, rationale, confidence) → **30 independent replicates**, adjudication pending.
+
+::: {.theory-box}
+Inter-coder reliability is the standard for *supervised* coding and a category mismatch for *unsupervised* discovery — the burden shifts to post-hoc validation: **semantic**, **replicate agreement**, **predictive**.
+:::
+
+[The labeling schema carries no ideological-orientation field, and no claim here rests on a model-assigned political leaning.]{.neon-cyan}
+
+[DiMaggio et al. (2013); Grimmer & Stewart (2013); Pham et al. (2024).]{.citation}
+
+::: notes
+1. [⏱ 1:00]
+2. 每個 cluster 用「added value」排序它實際過度使用的媒體來源，而不是舊版的 distinctiveness score。
+3. 標籤模型是 gpt-5.6-sol，輸出結構化 JSON，並且執行了 30 次獨立重複標籤。
+4. 這一版的 schema 完全沒有 ideological orientation 欄位——這是本次 relabeling 的一個結構性改變，任何主張都不依賴模型指定的政治傾向。
+5. 標籤的可信度不靠模型自報的 confidence，而靠三項檢驗：語意效度、複本一致性、預測效度。
+6. **這些標籤目前是暫定的（provisional）**，30 次複本的裁決仍在進行中。
+:::
+
+---
+
+## Fifteen Repertoires {.smaller-content}
+
+```{r}
+#| label: fig-cluster-media-slide
+#| fig-width: 11
+#| fig-height: 5
+fig_cluster_media_obj + theme_sw()
+```
+
+[Fifteen distinct usage profiles, not fifteen shades of the same profile.]{.neon-cyan}
+
+[Cluster 0 (`r clab(0)`) is the reference; the noise cluster is dropped. `r cluster_labels_provisional_note`]{.citation}
+
+::: notes
+1. [⏱ 0:40]
+2. 這張圖呈現十五個 repertoire 在六類媒體來源群組上的使用率。
+3. Cluster 0 是建模參照組，noise cluster 已被排除。
+4. 完整的十五列命名表在 backup B1，這裡先看整體形態。
+5. 提醒：標籤仍是暫定版本。
+:::
+
+---
+
+## Measuring Both Facets {.smaller-content}
+
+**Perceived threat.** JB1/JB2 batteries, 18 dichotomous items; EFA (ML, tetrachoric, oblimin) → four factors. **Mediators are ten-Berge factor scores, not unit-weighted sums.** Names (Aggression online, Disinfo ops, TV threat, xMedia FakeNews) are interpretive labels. $\alpha$ = `r sprintf("%.2f", min(mediator_reliability_table$alpha))`–`r sprintf("%.2f", max(mediator_reliability_table$alpha))`.
+
+**Media distrust.** J4, 0–100 credibility per channel, five channels, reversed, mean over **available** channels — per-channel by design, since the referent determines what a trust study finds.
+
+**Moderators and outcomes.** Distress (harmonized four constructs, $\alpha$ = `r sprintf("%.3f", distress_reliability)`, metric invariance holds); security values (N3); BSC/BoSC from Williams' ISCS ($\alpha$ = `r sprintf("%.2f", bsc_reliability)`, `r sprintf("%.2f", bosc_reliability)`).
+
+[The four threat names are interpretive labels for oblique factors, not definitions of scales.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. 威脅知覺來自 JB1/JB2 兩組多選題，共 18 個二元題目，EFA 抽出四個因素。
+3. Mediator 是 ten-Berge factor scores，不是題目加總——這是為了保留四個 facet 之間本來就存在的相關。
+4. 媒體不信任用 J4，逐頻道詢問可信度後反向計分，取可得頻道的平均，因為信任研究的結果高度依賴問的是哪個對象。
+5. Distress 通過了 metric invariance 檢定；BSC/BoSC 來自 Williams 的 ISCS 量表。
+:::
+
+---
+
+## How a Claim Gets Made Here
+
+**Estimators.** Weighted `lm` primary; stratified `svyglm` design-based robustness check.
+
+::: {.theory-box}
+**Neither is unambiguously conservative** — `lm(weights=)` treats weights as precision weights (anti-conservative SEs); the pooled design is strata-only because the PSU identifier is absent from the 2022 release (design-based SEs are themselves a lower bound).
+:::
+
+**The interpretability criterion.** (i) **Omnibus gate** — 14-df *F* on the full interaction block before any term inside it is read. (ii) **Reference-free corroboration** — the repertoire's own simple slope at ±1 SD via `emmeans`. A term is interpretable only if **both** hold.
+
+[The gate protects interpretation; it is not a familywise correction, so repertoire-level patterns are labelled descriptively.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:00]
+2. 這張投影片決定了後面所有結果怎麼被讀。
+3. 兩種估計法都不是天然保守的，所以兩者並列報告，而不是挑一個當作嚴格標準。
+4. Interpretability criterion 有兩個條件：omnibus gate 先開，然後 reference-free 的 simple slope 要被證實。
+5. 兩者都滿足，才算 interpretable as moderation——這不是 familywise correction，所以每個 repertoire 的型態仍用描述性語氣呈現。
+:::
+
+# What the Repertoires Do
+
+---
+
+## RQ1: Both Facets Differentiate
+
+The 14-df repertoire block is significant for all five outcomes, under both estimators. Threat-facet block *F* range `r sprintf("%.2f", min(h1a_h1b_omnibus$F_weighted[h1a_h1b_omnibus$hypothesis == "H1a (perceived threat)"]))`–`r sprintf("%.2f", max(h1a_h1b_omnibus$F_weighted[h1a_h1b_omnibus$hypothesis == "H1a (perceived threat)"]))`, all *p* `r fmt_p(max(h1a_h1b_omnibus$p_weighted[h1a_h1b_omnibus$hypothesis == "H1a (perceived threat)"]))`; media distrust *F* `r sprintf("%.2f", h1_row("J4_distrust")$F_weighted)`, *p* `r fmt_p(h1_row("J4_distrust")$p_weighted)`.
+
+Effect sizes are small — Cohen's $f^2$ `r sprintf("%.3f", min(h1a_h1b_omnibus$f2_weighted))`–`r sprintf("%.3f", max(h1a_h1b_omnibus$f2_weighted))` — what a fifteen-category contrast on a large national sample should yield.
+
+[H1a and H1b are both supported, under both estimators.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:40]
+2. 14 df 的 repertoire block 在五個結果變項上都顯著，兩種估計法皆然。
+3. 效果量偏小，這正是十五類對比在大型全國樣本下應有的樣貌，不代表結果不重要。
+4. H1a、H1b 都成立，這是後面所有分析的起點。
+:::
+
+---
+
+## RQ1: But Not in the Same Order {.tight}
+
+```{r}
+#| label: tbl-h1-facet-map-slide
+h1_facet_map %>%
+  mutate(cell = sprintf("%+.2f", weighted_mean)) %>%
+  select(facet, repertoire, cell) %>%
+  pivot_wider(names_from = facet, values_from = cell) %>%
+  arrange(as.integer(str_extract(repertoire, "^[0-9]+"))) %>%
+  rename(Repertoire = repertoire) %>%
+  knitr::kable(col.names = c("Repertoire", "Online Aggr.", "Disinfo Ops", "TV Threat", "xMedia Fake", "Media Distrust"))
+```
+
+Cluster 3 (`r clab(3)`) is **highest**-threat on all four threat facets and simultaneously rank `r fm_row("J4_distrust", 3)$rank` of 15 in distrust.
+
+[Two facets a one-dimensional media-cynicism account would place together sit at opposite ends — the empirical content of M1.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:00]
+2. 這是 RQ1 的核心投影片。
+3. Cluster 3（`r clab(3)`）在四個威脅 facet 上都排名最高，但在 media distrust 上卻排在第 `r fm_row("J4_distrust", 3)$rank` 名（共 15 名）。
+4. 這個反轉正是 M1 的經驗內容：如果兩個 facet 是同一個潛在構念，不應該出現這種分離。
+5. 兩個關於這個排序的解讀都是 post-hoc：partisan 解讀與 engagement-detachment 解讀。partisan 解讀不成立——cluster 0（`r clab(0)`），這個 facet 上最大、且建立在明確親藍頻道之上的 repertoire，distrust 排名居中偏低（第 `r fm_row("J4_distrust", 0)$rank` 名），不在應有的高 distrust 端；Blue/Green 二分並不能組織這個排序，我們選擇報告這個「失敗」而不是略過。Engagement-detachment 解讀描述上表現較好，但也是 post-hoc。
+:::
+
+---
+
+## RQ2: From Significant Terms to Interpretable Moderation
+
+`r n_sig_int` significant interaction terms → `r n_corrob_w` corroborated (weighted) / `r n_corrob_d` (design-based) → **`r n_interp`** interpretable. `r n_corrob_w - n_interp` corroborated terms sit in cells whose omnibus block is null — a corroborated slope does not re-open a gate that never opened.
+
+`r n_gate_open` of ten cells open the gate (`r gate_open_cells`); `r n_design_agree` of ten agree under design-based inference.
+
+[That chain governs every moderation claim in this study.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:00]
+2. 從 `r n_sig_int` 個顯著交互作用項開始，只有 `r n_corrob_w` 個在加權估計下通過 reference-free 的 simple-slope 檢驗。
+3. 同時滿足 gate 開啟與 corroboration 兩個條件的，只剩 `r n_interp` 個——這條鏈決定了整篇論文所有的 moderation 主張。
+4. 十個 cell 中有 `r n_gate_open` 個 gate 是開的，design-based 估計在其中 `r n_design_agree` 個上一致。
+:::
+
+---
+
+## RQ2: Amplification *and* Attenuation
+
+```{r}
+#| label: tbl-rq2-interpretable-slide
+rq2_coefficient_slope_comparison %>%
+  filter(interpretable_as_moderation) %>%
+  transmute(
+    Cell = paste0(mediator, " × ", ifelse(moderator == "N3_z", "Security", "Distress")),
+    Repertoire = repertoire,
+    `Interaction b` = sprintf("%+.3f", b_interaction),
+    Direction = b_direction,
+    `Simple slope` = sprintf("%+.3f", slope_lm),
+    `Design-robust` = ifelse(slope_corroborated, "yes", "no")
+  ) %>%
+  knitr::kable()
+```
+
+SET TV attenuation is corroborated under the primary weighted estimator only (design-based simple-slope *p* = `r fmt_pv(rq2_term("Disinfo_ops", "Distress", 2)$slope_svy_p)` and `r fmt_pv(rq2_term("Aggression_online", "Distress", 2)$slope_svy_p)`).
+
+::: {.theory-box}
+Attenuation is conditional cultivation's own boundary-condition case — cultivation was specified to flatten under ceiling effects and to moderate selectively within studies.
+:::
+
+[Amplification and attenuation coexist across repertoires — the result, not an inconsistency.]{.neon-cyan}
+
+[Hetsroni (2014); Russell & Buhrau (2015).]{.citation}
+
+::: notes
+1. [⏱ 0:50]
+2. 兩個放大：`r clab(10)` 的安全價值 × online aggression，以及 `r clab(14)` 的 distress × TV threat，兩者都 design-robust。
+3. 一個減弱：`r clab(2)` 的 distress 同時減弱 disinformation 與 online aggression 的關聯，但只在加權估計下通過 corroboration。
+4. 這不是反常，而是 conditional cultivation 理論自己允許的邊界條件——當某個結果變項接近天花板效應時，涵化效果本來就該減弱。
+:::
+
+---
+
+## RQ2: The Moderator's Own Effect Is Itself a Result
+
+Security values raise perceived threat on three of four threat facets (cluster-averaged overall slopes); distress does not. For Disinfo_ops × Distress, the *bare reference-repertoire* coefficient ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_main_b)`, $p$ `r fmt_p(rq2_row("Disinfo_ops", "Distress")$W_main_p)`) is clearly significant, while the cluster-averaged slope straddles zero ($b$ `r fmt_est(rq2_row("Disinfo_ops", "Distress")$W_overall_slope)`).
+
+Distress raises the *level* of media distrust (`r fmt_est(rq2_row("J4_distrust", "Distress")$W_overall_slope)`) while the J4 × Distress interaction block is null — the indirect effects below are treated as unmoderated.
+
+[Report `W_overall_slope`, never the bare `W`.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. 交互作用模型中，那個「裸的」moderator 係數其實只是參照組的斜率，不是 moderator 的一般效果。
+3. Disinfo_ops × Distress 就是最清楚的例子：裸係數顯著，但跨群平均後的斜率卻幾乎是零——兩個數字會導出完全相反的句子。
+4. Distress 會提高 media distrust 的整體水準，但不會改變 repertoire → distrust 這條路徑本身，所以後面的 indirect effect 都當作未被調節來處理。
+:::
+
+---
+
+## RQ3: Distrust Erodes; Threat Does Not
+
+```{r}
+#| label: tbl-h3ab-bpath-slide
+h3ab_bpath_table %>%
+  transmute(
+    Facet = ifelse(str_detect(pathway, "distrust"), "Media distrust", mediator),
+    Outcome = outcome,
+    `b (wtd)` = sprintf("%+.3f", estimate),
+    `95% CI` = sprintf("[%+.3f, %+.3f]", conf.low, conf.high),
+    `p (wtd / design)` = paste0(
+      ifelse(p.value < .001, "<.001", sub("^0", "", sprintf("%.3f", p.value))), " / ",
+      ifelse(p_design < .001, "<.001", sub("^0", "", sprintf("%.3f", p_design)))
+    ),
+    Status = design_status
+  ) %>%
+  knitr::kable()
+```
+
+**H3a supported, carried entirely by media distrust** (BSC design-robust; BoSC marginal under design-based inference). None of the four threat facets erodes either tie type.
+
+[The headline is a divergence between facets, not a single verdict.]{.neon-cyan}
+
+::: notes
+1. [⏱ 1:00]
+2. Media distrust 對兩種社會資本都是負向的：BSC 在 design-based 下依然穩健，BoSC 只是 marginal。
+3. 四個威脅 facet 沒有一個會侵蝕任一種 tie type——有些甚至是正向的。
+4. 這就是這篇論文的頭條發現：兩個 facet 在下游走向完全不同的方向。
+:::
+
+---
+
+## RQ3 / H3c: Bridging Erodes Harder
+
+$\Delta b$ = `r fmt_est(h3c_row("J4_distrust")$delta_b)`, 95% CI `r fmt_ci(h3c_row("J4_distrust")$delta_lo, h3c_row("J4_distrust")$delta_hi)`, excluding zero: bridging ties erode about **`r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`×** more strongly than bonding. Supported for distrust and no threat facet — all four threat $\Delta b$ CIs contain zero.
+
+::: {.theory-box}
+**Because both associations are negative, this is a magnitude claim.** Bridging falling faster shifts the relative balance toward bonding while both decline — a compositional shift inside a shrinking total, not growth in bonding capital.
+:::
+
+The nearest prior ordering (Beaudoin 2011: bonding β = .26 > bridging β = .17) runs the other way — a contribution, not a replication.
+
+[Nothing here supports a claim that people "turn to" bonding ties when they distrust the media.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. Delta b 排除零，bridging 大約以 `r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)` 倍的強度比 bonding 侵蝕得更快。
+3. 這是 magnitude claim，不是 direction claim；兩條 b-path 都是負的，不能說人們「轉向」bonding ties——這只是在一個持續縮小的總量裡，相對比例往 bonding 偏移。
+4. 這個方向跟最接近的前人研究（Beaudoin 2011）相反，所以是一個 contribution，不是複製。
+:::
+
+---
+
+## RQ3 / H3b: Compensation Is the Weakest Claim
+
+Two threat facets positively associated with connectedness under the primary estimator: TV threat → BSC and online aggression → BSC/BoSC. Only **TV threat → BSC** survives design-based inference (*p* `r fmt_p(bpath("TV_threat", "BSC")$p_design)`); both online-aggression paths go marginal.
+
+External picture is mixed: Leong et al. (2023) positive but different domain; Neyazi et al. (2021) null; Goodwin et al. (2005) runs to bonding.
+
+[Supported weakly and locally — a direction for future work, not a finding delivered.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. 兩個威脅 facet 在主要估計法下與 connectedness 正相關，但只有 TV threat → BSC 在 design-based 檢驗下依然穩健。
+3. 兩條 online aggression 的路徑都變成 marginal——這是全篇最脆弱的一個主張。
+4. 外部文獻的證據也是混合的，不是一致支持的方向。
+:::
+
+# What It Buys Us
+
+---
+
+## Informational Insecurity Is Not One Thing
+
+Distrust erodes both tie types and erodes bridging ~`r sprintf("%.1f", h3c_row("J4_distrust")$strength_ratio_BSC_over_BoSC)`× harder; perceived threat erodes neither, and is *positively* associated with bridging for TV threat.
+
+::: {.theory-box}
+Provenance: **H1a, H2b, H3a, H3b** were carried forward; **H1b, H2a, H2c, H3c** are exploration-derived, and the two readings of the distrust ranking are post-hoc.
+:::
+
+[A framework treating informational insecurity as a single construct cannot state that result, let alone explain it.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:50]
+2. 把三個 RQ 放在一起看：RQ1 說 repertoire 讓兩個 facet 分化，且排序不同；RQ2 說這個分化大部分是不被調節的；RQ3 說兩個 facet 下游走向相反。
+3. 讀者心裡想的是哪個 facet，決定了 informational insecurity 看起來像 erosion 還是像 mobilization。
+4. 這張投影片也是揭露 provenance 的地方：H1b、H2a、H2c、H3c 都是 exploration-derived，不是 pre-registered 的預測。
+:::
+
+---
+
+## What This Study Does Not Claim
+
+Do not cut. Four items:
+
+- **Provenance** — H1a, H2b, H3a, H3b carried forward; H1b, H2a, H2c, H3c exploration-derived; both readings of the distrust ranking are post-hoc.
+- **Design** — cross-sectional; self-report; longitudinal/trace data would model distress–exposure coevolution directly.
+- **Partisan confounding** — individual party ID is in only one pooled wave. Imputing it from aggregate outlet ideology is a textbook **ecological inference** error, and would over-control the repertoire predictor itself. The labeling protocol makes the same restraint structural: it assigns clusters no ideological orientation at all.
+- **Strong inference** — H3a and H3b were genuinely pre-stated as rivals, so the mixed, largely-null pattern is a contribution, not a failure to be spun as confirmation.
+
+[No single hypothesis now owns the integrated moderated-mediation claim once headlined.]{.neon-cyan}
+
+[Robinson (1950); Schuessler (1999); Platt (1964); Kerr (1998).]{.citation}
+
+::: notes
+1. [⏱ 0:50]
+2. 個人政黨傾向只存在於其中一波，我們拒絕用媒體的整體意識形態傾向去推算個人政黨傾向——這是教科書等級的 ecological inference 問題，也可能過度控制了 repertoire 這個預測變項本身。
+3. 這次的標籤協定把這個限制變成結構性的：schema 完全沒有 ideological orientation 欄位。
+4. H3a 與 H3b 是事前就設定好的競爭假設，所以混合、大致為零的結果是一項貢獻，不是把失敗包裝成確認。
+5. 這張投影片不能被刪——它是整場演講對 claim scope 的揭露。
+:::
+
+---
+
+## References {.tight}
+
+- Bennett, W. L., & Livingston, S. (2018). The disinformation order: Disruptive communication and the decline of democratic institutions. *European Journal of Communication, 33*(2), 122–139. https://doi.org/10.1177/0267323118760317
+- Chadwick, A. (2017). *The hybrid media system* (2nd ed.). Oxford University Press.
+- Skrzypczak, J. (2019). The effect of the "China factor" on Taiwan's media system security as an example of the "privatization and outsourcing" of censorship and propaganda in the digital age. *Przegląd Strategiczny*, (12), 353–365. https://doi.org/10.14746/ps.2019.1.22
+- Chang, C., Hung, Y.-C., & Hsieh, M. (2023). We are what we consume: Predicting independent voters' voting preference from their media diet color. *Social Science Computer Review, 42*(3), 661–680. https://doi.org/10.1177/08944393231214027
+- Strömbäck, J., Tsfati, Y., Boomgaarden, H., Damstra, A., Lindgren, E., Vliegenthart, R., & Lindholm, T. (2020). News media trust and its impact on media use: Toward a framework for future research. *Annals of the International Communication Association, 44*(2), 139–156. https://doi.org/10.1080/23808985.2020.1755338
+- Knudsen, E., Dahlberg, S., Iversen, M. H., Johannesson, M. P., & Nygaard, S. (2021). How the public understands news media trust: An open-ended approach. *Journalism, 23*(11), 2347–2363. https://doi.org/10.1177/14648849211005892
+- DiMaggio, P., Nag, M., & Blei, D. (2013). Exploiting affinities between topic modeling and the sociological perspective on culture. *Poetics, 41*(6), 570–606. https://doi.org/10.1016/j.poetic.2013.08.004
+- Grimmer, J., & Stewart, B. M. (2013). Text as data: The promise and pitfalls of automatic content analysis methods for political texts. *Political Analysis, 21*(3), 267–297. https://doi.org/10.1093/pan/mps028
+- Pham, C. M., Hoyle, A., Sun, S., Resnik, P., & Iyyer, M. (2024). TopicGPT: A prompt-based topic modeling framework. In *Proceedings of NAACL-HLT 2024* (pp. 2956–2984). Association for Computational Linguistics. https://doi.org/10.18653/v1/2024.naacl-long.164
+
+::: notes
+1. 這一頁與下一頁的引用來自 IIS-auto.bib，逐一核對過 citekey。
+:::
+
+---
+
+## References II {.tight}
+
+- Hetsroni, A. (2014). Ceiling effect in cultivation. *Journal of Media Psychology, 26*(1), 10–18. https://doi.org/10.1027/1864-1105/a000099
+- Russell, C. A., & Buhrau, D. (2015). The role of television viewing and direct experience in predicting adolescents' beliefs about the health risks of fast-food consumption. *Appetite, 92*, 200–206. https://doi.org/10.1016/j.appet.2015.05.023
+- Beaudoin, C. E. (2011). News effects on bonding and bridging social capital: An empirical study relevant to ethnicity in the United States. *Communication Research, 38*(2), 155–178. https://doi.org/10.1177/0093650210381598
+- Leong, A. D., McComas, K. A., Balog-Way, D. H. P., & Schuler, K. L. (2023). Expanding on behavioral outcomes in the risk information seeking and processing model. *Science Communication, 45*(3), 310–336. https://doi.org/10.1177/10755470231165489
+- Neyazi, T. A., Kalogeropoulos, A., & Nielsen, R. K. (2021). Misinformation concerns and online news participation among internet users in India. *Social Media + Society, 7*(2). https://doi.org/10.1177/20563051211009013
+- Goodwin, R., Willson, M., & Stanley, G. (2005). Terror threat perception and its consequences in contemporary Britain. *British Journal of Psychology, 96*(4), 389–406. https://doi.org/10.1348/000712605x62786
+- Robinson, W. S. (1950). Ecological correlations and the behavior of individuals. *American Sociological Review, 15*(3), 351. https://doi.org/10.2307/2087176
+- Schuessler, A. A. (1999). Ecological inference. *Proceedings of the National Academy of Sciences, 96*(19), 10578–10581. https://doi.org/10.1073/pnas.96.19.10578
+- Platt, J. R. (1964). Strong inference. *Science, 146*(3642), 347–353. https://doi.org/10.1126/science.146.3642.347
+- Kerr, N. L. (1998). HARKing: Hypothesizing after the results are known. *Personality and Social Psychology Review, 2*(3), 196–217. https://doi.org/10.1207/s15327957pspr0203_4
+
+::: notes
+1. 補充引用，涵蓋 ceiling effect、conditional cultivation、以及 ecological inference / HARKing 的方法論文獻。
+:::
+
+---
+
+## {.closing .horizon .bleed style="--horizon-bottom: 10%;"}
+
+::: {.kicker}
+Insecure Island Syndrome · TCS 2022 + 2024
+:::
+
+::: {.thesis}
+Informational insecurity is **[not one thing]{.thesis-key}**—and only one facet does the eroding.
+:::
+
+:::: {.columns}
+::: {.column width="58%"}
+::: {.ask}
+Questions?
+:::
+:::
+::: {.column width="42%"}
+::: {.namecard}
+#### Mu-Jung "MJ" Cho | 卓牧融
+[mjcho@as.edu.tw]{.neon-red}
+
+RCHSS, Academia Sinica
+
+with Chia-Ming Hsu, RCHSS, Academia Sinica
+:::
+:::
+::::
+
+::: notes
+1. 兩個 facet 一個侵蝕、一個沒有，甚至在某些情況下是正向的。
+2. 這就是這場演講想留下的一句話：informational insecurity 不是一件事。
+3. 歡迎提問。
+:::
+
+# Backup
+
+---
+
+## B1 — Full Cluster Taxonomy {.tight .scrollable}
+
+```{r}
+#| label: tbl-b1-taxonomy
+cluster_taxonomy %>%
+  transmute(Cluster = ifelse(id == 0, "0 (ref)", as.character(id)),
+            `Label (EN)` = en, n) %>%
+  knitr::kable()
+```
+
+`r cluster_labels_provisional_note`
+
+::: notes
+1. 完整十五列命名表，含樣本數；標籤仍為暫定版本。
+:::
+
+---
+
+## B2 — Full RQ2 Verdict Table {.tight .scrollable}
+
+```{r}
+#| label: tbl-b2-rq2-verdict
+rq2_verdict_table %>%
+  transmute(
+    Mediator = mediator,
+    Moderator = ifelse(moderator == "N3_z", "Security", "Distress"),
+    `F` = sprintf("%.2f", F_weighted),
+    `p (wtd/design)` = paste0(sapply(p_weighted, fmt_pv), " / ", sapply(p_design, fmt_pv)),
+    Concordant = ifelse(design_concordant, "yes", "no"),
+    Gate = ifelse(omnibus_null, "closed", "OPEN")
+  ) %>%
+  knitr::kable()
+```
+
+::: notes
+1. 全部十個 cell 的 omnibus gate 結果與 design concordance。
+:::
+
+---
+
+## B3 — Full b-Path Coefficient Tables {.tight .scrollable}
+
+```{r}
+#| label: tbl-b3-pathb
+label_map_b <- c(
+  TV_threat = "TV Threat", Aggression_online = "Online Aggression",
+  Disinfo_ops = "Disinfo Ops", xMedia_FakeNews = "xMedia FakeNews",
+  Distress = "Psychological Distress (z)", J4_distrust = "Media Distrust",
+  setNames(paste0("Cluster ", 1:14), paste0("cluster", 1:14))
+)
+path_b_table %>%
+  mutate(Term = label_map_b[term]) %>%
+  filter(!is.na(Term)) %>%
+  transmute(term, Term, `Bridging SC` = sprintf("%.3f (%.3f)%s", estimate, std.error, sig)) %>%
+  left_join(
+    path_b_bosc_table %>%
+      transmute(term, `Bonding SC` = sprintf("%.3f (%.3f)%s", estimate, std.error, sig)),
+    by = "term"
+  ) %>%
+  select(-term) %>%
+  knitr::kable()
+```
+
+Distress is strongly negative on bonding ($b$ `r fmt_est(coef_row_bosc("Distress")$estimate)`, $p$ `r fmt_p(coef_row_bosc("Distress")$p.value)`) but only marginal on bridging ($b$ `r fmt_est(coef_row("Distress")$estimate)`, $p$ `r fmt_p(coef_row("Distress")$p.value)`).
+
+::: notes
+1. 完整的 Path B 係數表，含 repertoire block；兩個結果變項是在完全相同的樣本上估計，係數可直接比較。
+:::
+
+---
+
+## B4 — Measurement Detail {.tight .scrollable}
+
+```{r}
+#| label: tbl-b4-reliability
+mediator_reliability_table %>%
+  transmute(Mediator = mediator, `Cronbach's alpha` = round(alpha, 3)) %>%
+  knitr::kable()
+```
+
+```{r}
+#| label: tbl-b4-j4sens
+j4_channel_sensitivity_table %>%
+  transmute(
+    Version = version, Outcome = outcome, N = format(N, big.mark = ","),
+    `F (wtd)` = sprintf("%.2f", F_weighted),
+    `p (wtd/design)` = paste0(sapply(p_weighted, fmt_pv), " / ", sapply(p_design, fmt_pv)),
+    `H1b sig.` = ifelse(h1b_significant, "yes", "no")
+  ) %>%
+  knitr::kable()
+```
+
+Metric invariance: $\Delta\chi^2$(`r inv_row("configural_to_metric")$df_diff`) = `r sprintf("%.2f", inv_row("configural_to_metric")$chisq_diff)`, *p* `r fmt_p(inv_row("configural_to_metric")$p_value)`. Scalar vs. metric: $\Delta$CFI = `r fmt_nz(inv_row("metric_to_scalar")$delta_cfi)`.
+
+::: notes
+1. Mediator reliability、J4 頻道敏感性分析（complete-on-all-five 仍重現 H1b），以及 measurement invariance 的關鍵數字。
+:::
+
+---
+
+## B5 — Design Concordance Ledger {.tight .scrollable}
+
+`r design_concordance_headline`
+
+```{r}
+#| label: tbl-b5-concordance
+design_concordance_summary %>%
+  transmute(Block = block, Claim = claim, Primary = primary,
+            `Design-based` = design_based, Status = status) %>%
+  knitr::kable()
+```
+
+::: notes
+1. 逐項列出主要估計法與 design-based 檢驗的一致性。
+:::
+
+---
+
+## B6 — Power for the RQ2 Interaction Blocks {.tight .scrollable}
+
+```{r}
+#| label: tbl-b6-power
+rq2_power_table %>%
+  transmute(
+    Mediator = mediator,
+    Moderator = ifelse(moderator == "N3_z", "Security", "Distress"),
+    N = format(N, big.mark = ","),
+    `Min. det. f2` = sprintf("%.4f", min_detectable_f2),
+    `Observed f2` = sprintf("%.4f", observed_f2),
+    `Powered` = ifelse(adequately_powered, "yes", "no")
+  ) %>%
+  knitr::kable()
+```
+
+[Design-effect check: `r design_effect_diagnostic$term[1]` SE ratio (design/lm) = `r sprintf("%.2f", design_effect_diagnostic$se_ratio[1])`.]{.citation}
+
+::: notes
+1. 每個 cell 都對照自己的最小可偵測 f-squared 檢驗——null 結果是有資訊的，不是不確定的。
+:::
+
+---
+
+## B7 — Indirect Effects Through Media Distrust (cut from main deck) {.tight .scrollable}
+
+**Descriptive.** The interpretable set is the **`r nrow(h3_distrust_indirect_table)`** unmoderated distrust-pathway indirect effects (14 repertoire contrasts × 2 outcomes). `r sum(h3_distrust_indirect_table$ind_sig)` significant under the primary bootstrap, `r sum(h3_distrust_indirect_table$design_sig)` design-robust: clusters 5 (`r clab(5)`), 6 (`r clab(6)`) and 10 (`r clab(10)`), **all on bridging**, each negative (e.g. cluster 10 $IE$ = `r sprintf("%.4f", ie_row("BSC", 10)$indirect)`, 95% CI `r fmt_ci(ie_row("BSC", 10)$ind_lo, ie_row("BSC", 10)$ind_hi, 4)`).
+
+Counting significant conditional cells is not a test of moderated mediation; the appropriate test is an index of moderated mediation, which was not estimated and no claim rests on it.
+
+[That all three survivors fall on bridging is consistent with the H3c result.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:40 — cut from the 18-minute main deck per §7; kept here for Q&A]
+2. `r nrow(h3_distrust_indirect_table)` 個未被調節的 distrust indirect effect，其中 `r sum(h3_distrust_indirect_table$design_sig)` 個 design-robust，全部落在 bridging，且都是負向。
+3. 這與 H3c 的結果一致，但不構成 moderated-mediation 的檢驗——我們沒有估計 index of moderated mediation。
+:::
+
+---
+
+## B8 — Why This Isn't Just Measurement Noise (cut from main deck) {.tight .scrollable}
+
+In-sample: media distrust correlates $r$ = `r fmt_nz(r_of("J4_distrust", "JB1_z"))` with the TV-side threat battery and $r$ = `r fmt_nz(r_of("J4_distrust", "JB2_z"))` with the online-side battery, while the two threat batteries correlate $r$ = `r fmt_nz(r_of("JB1_z", "JB2_z"))` with each other.
+
+The stronger defence does not rest on our sample: **the media-trust ↔ perceived-threat association has no stable sign across studies** — Hameleers & Garnier Ortiz (2024) negative on trust, Neyazi et al. (2021) and Matthes et al. (2022) positive, every estimate weak (none exceeding |.17|).
+
+[Instability of that kind is what two separable objects look like when each is measured with a different instrument in a different population.]{.neon-cyan}
+
+::: notes
+1. [⏱ 0:40 — cut from the 18-minute main deck per §7; kept here for Q&A]
+2. 樣本內：distrust 與兩個威脅 battery 的相關都很弱，兩個威脅 battery 彼此的相關卻強得多。
+3. 更關鍵的防線在樣本外：media trust 與 perceived threat 的關聯在跨研究中方向不穩定，三個研究、兩個方向，且都很弱。
+4. 這種不穩定正是兩個各自被不同工具、不同母體測量的獨立構念該有的樣子。
+:::
+
