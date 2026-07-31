@@ -7,7 +7,7 @@ author:
     email: 'mjcho@as.edu.tw'
     affiliations:
       - name: 'RCHSS, Academia Sinica'
-  - name: "Chia-Ming Hsu"
+  - name: "Chia-Ming Hsu | 許家銘"
     affiliations:
       - name: 'RCHSS, Academia Sinica'
 format:
